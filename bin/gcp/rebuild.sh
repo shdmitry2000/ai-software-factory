@@ -11,7 +11,7 @@ F="--project $PROJECT --zone $ZONE --tunnel-through-iap --quiet"
 bin/gcp/create-factory-vm.sh bin/bootstrap-ubuntu.sh
 gcloud compute scp bin/gcp/setup-app-on-vm.sh "$VM":/tmp/ $F
 gcloud compute ssh "$VM" $F --command 'sudo -i bash /tmp/setup-app-on-vm.sh'
-bin/gcp/push-logins.sh
 gcloud compute scp bin/gcp/archon-console.sh "$VM":/tmp/ $F
 gcloud compute ssh "$VM" $F --command 'sudo -i bash /tmp/archon-console.sh' < /dev/null
+bin/gcp/push-logins.sh   # stops here until ~/.factory-secrets holds both tokens
 gcloud compute ssh "$VM" $F --command 'sudo -i bash -lc "cd ~/file-to-markdown-convertor && python3 factory/consumer.py doctor"'
