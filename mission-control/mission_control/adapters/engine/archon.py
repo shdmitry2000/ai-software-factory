@@ -159,7 +159,9 @@ def _run_data(etype: str, data: dict, run: dict) -> dict:
 
 def _time(etype: str, data: dict, created_at: str) -> str:
     timing = data.get("timing") or {}
-    started = timing.get("startedAt")
+    # Archon's durationMs counts from the invocation's start, not the attempt's (~25 ms later);
+    # using the attempt start put a node's end after its successor's start.
+    started = (data.get("invocation") or {}).get("startedAt") or timing.get("startedAt")
     if etype == "node_started" and started:
         return started
     if etype in ("node_completed", "node_failed") and started and timing.get("durationMs") is not None:
