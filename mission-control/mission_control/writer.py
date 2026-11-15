@@ -69,6 +69,14 @@ def make_app(store: StateStore):
     return app
 
 
+def create():
+    """WSGI factory for gunicorn: `gunicorn 'mission_control.writer:create()'`."""
+    from mission_control import config
+
+    logging.basicConfig(level=logging.INFO)
+    return make_app(config.load().adapter("store"))
+
+
 def main() -> None:
     from wsgiref.simple_server import make_server
 
