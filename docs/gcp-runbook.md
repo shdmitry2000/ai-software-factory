@@ -55,6 +55,21 @@ gcloud compute ssh factory-1 $F --command 'sudo -i bash -lc "cd ~/file-to-markdo
 # expected: 368 passed, 2 deselected
 ```
 
+## 2b. Archon console (optional, ~5 min)
+
+```bash
+gcloud compute scp bin/gcp/archon-console.sh factory-1:/tmp/ $F
+gcloud compute ssh factory-1 $F --command 'sudo -i bash /tmp/archon-console.sh'
+# then, on the Mac, keep this running and open http://localhost:3090
+gcloud compute start-iap-tunnel factory-1 3090 --local-host-port=localhost:3090 \
+  --zone me-west1-a --project me-sb-dgcp-dpoc-pocyosh-pr
+```
+
+[`bin/gcp/archon-console.sh`](../bin/gcp/archon-console.sh) serves the console from its own
+copy of the pinned Archon (the pinned tree must stay clean) as systemd service
+`archon-console`, sharing `~/.archon` so it shows the factory's runs. Port 3090 is open
+to the IAP range only. `rebuild.sh` does this step too.
+
 ## 3. The two logins
 
 With the tokens saved on the Mac ([one-time setup](#one-time-keep-the-tokens-on-the-mac)),
