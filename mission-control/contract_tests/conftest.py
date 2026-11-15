@@ -25,6 +25,7 @@ class BusHarness:
     bus: Any
     topic: str
     subscription: str
+    close: Callable[[], None] = lambda: None
 
 
 @dataclass
@@ -46,10 +47,44 @@ def _memory_store() -> StoreHarness:
 
 
 LIVE = os.environ.get("MC_CONTRACT_LIVE") == "1"
+GCP_PROJECT = os.environ.get("MC_GCP_PROJECT", "")
+_LIVE_SKIP = "" if (LIVE and GCP_PROJECT) else "live adapter: set MC_CONTRACT_LIVE=1 and MC_GCP_PROJECT"
+
+
+def _pubsub_bus() -> BusHarness:
+    """Throwaway topic, dead-letter topic and subscription, deleted after the test."""
+    bus = registry.get("bus", "pubsub")(project=GCP_PROJECT)
+    tag = uuid.uuid4().hex[:8]
+    topic, dlq, sub = f"test-mc-{tag}", f"test-mc-{tag}-dlq", f"test-mc-{tag}-sub"
+    bus.create_topic(topic)
+    bus.create_topic(dlq)
+    # A dead-letter policy is what makes Pub/Sub count delivery attempts.
+    bus.create_subscription(sub, topic, dead_letter_topic=dlq, max_delivery_attempts=5)
+    # A new subscription can miss messages for its first seconds; wait until a probe
+    # arrives so the test measures the adapter, not Pub/Sub's propagation delay.
+    for _ in range(30):
+        bus.publish(topic, {"specversion": "1.0", "id": f"probe:{uuid.uuid4().hex}", "probe": "1"})
+        got = bus.pull(sub, max_messages=10, timeout_s=2)
+        for d in got:
+            d.ack()
+        if got:
+            break
+    else:
+        raise RuntimeError(f"subscription {sub} never became ready")
+    for d in bus.pull(sub, max_messages=50, timeout_s=2):   # any late probes
+        d.ack()
+
+    def close() -> None:
+        bus.delete_subscription(sub)
+        bus.delete_topic(topic)
+        bus.delete_topic(dlq)
+
+    return BusHarness(bus, topic, sub, close)
+
 
 # port → [(adapter name, harness factory, skip reason or "")]
 CANDIDATES: dict[str, list[tuple[str, Callable[[], Any], str]]] = {
-    "bus": [("memory", _memory_bus, "")],
+    "bus": [("memory", _memory_bus, ""), ("pubsub", _pubsub_bus, _LIVE_SKIP)],
     "store": [("memory", _memory_store, "")],
 }
 
@@ -68,8 +103,12 @@ def _params(port: str):
 
 
 @pytest.fixture(params=_params("bus"))
-def bus_h(request) -> BusHarness:
-    return request.param()
+def bus_h(request):
+    h = request.param()
+    try:
+        yield h
+    finally:
+        h.close()
 
 
 @pytest.fixture(params=_params("store"))

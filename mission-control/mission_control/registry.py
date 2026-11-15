@@ -21,7 +21,8 @@ _ADAPTERS: dict[str, dict[str, Factory]] = {port: {} for port in PORTS}
 # Built-in adapter modules, imported on first lookup so an adapter's cloud SDK is only
 # needed when that adapter is actually used.
 BUILTIN: dict[str, dict[str, str]] = {
-    "bus": {"memory": "mission_control.adapters.bus.memory"},
+    "bus": {"memory": "mission_control.adapters.bus.memory",
+            "pubsub": "mission_control.adapters.bus.pubsub"},
     "store": {"memory": "mission_control.adapters.store.memory"},
 }
 
