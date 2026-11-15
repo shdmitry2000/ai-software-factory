@@ -19,3 +19,4 @@ packages = ["mission_control"]
 
 [tool.pytest.ini_options]
 testpaths = ["contract_tests", "tests"]
+pythonpath = ["tests"]
