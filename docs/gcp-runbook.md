@@ -113,16 +113,27 @@ Scheduling stays off until a lap has been watched end to end.
 
 ## Warning: sandbox cleaner
 
-`me-sb-*` projects are swept every Sunday by
-`sandbox-cleaner@dgcp-mgmt-scheduled.iam.gserviceaccount.com`, which deletes the VM and its
-firewall rule (first seen 2026-11-14, 23:22 UTC; the user confirmed the schedule as Sundays). There is no exemption, so the
-factory runs on a weekly cycle:
+`me-sb-*` projects are swept every weekend by
+`sandbox-cleaner@dgcp-mgmt-scheduled.iam.gserviceaccount.com`. From its audit log
+(`gcloud logging read 'protoPayload.authenticationInfo.principalEmail="sandbox-cleaner@dgcp-mgmt-scheduled.iam.gserviceaccount.com"'`):
+
+| When (UTC) | Israel time | What it does |
+|---|---|---|
+| Friday ~21:00–23:00 | Fri 23:00–01:00 | disables APIs |
+| Saturday 21:00 – Sunday ~00:30 | Sat 23:00 – Sun 02:30 | deletes VMs, disks, instance templates, firewall rules, subnets, GKE clusters; disables APIs (Pub/Sub, Firestore, Cloud Run, IAM, Artifact Registry, Compute, Logging, IAP…) |
+
+Not deleted (no such actions in the log): Pub/Sub topics and subscriptions, Firestore data,
+the Cloud Run service, Artifact Registry images, service accounts. They stop working while
+their APIs are off and come back when re-enabled. There is no exemption, so the factory runs
+on a weekly cycle:
 
 - **Nothing lives only on the VM.** The app repo holds its committed factory files
-  (`MISSION.md`, `harness/`, `.factory/`), and the Mac holds the two tokens.
-- **Saturday:** `python3 factory/consumer.py halt` on the VM, so no lap is cut off mid-run.
-  Open PRs survive on GitHub; the next lap picks them up.
-- **Sunday after the sweep, or Monday:** one command rebuilds everything, logins included (~20 min):
+  (`MISSION.md`, `harness/`, `.factory/`), Firestore holds history and the bridge cursor,
+  and the Mac holds the two tokens.
+- **Friday before 21:00 UTC:** `python3 factory/consumer.py halt` on the VM, so no lap is cut
+  off mid-run. Open PRs survive on GitHub; the next lap picks them up.
+- **Sunday after ~01:00 UTC, or Monday:** one command re-enables the APIs, re-applies the
+  writer's wiring and rebuilds the VM, Archon console, bridge and logins (~25 min):
 
   ```bash
   bin/gcp/rebuild.sh
