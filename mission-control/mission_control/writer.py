@@ -21,6 +21,7 @@ from typing import Any
 
 from mission_control.events import validate
 from mission_control.ports import StateStore
+from mission_control.projections import project
 
 log = logging.getLogger("mission_control.writer")
 EVENTS = "events"
@@ -40,6 +41,7 @@ def handle(body: Any, store: StateStore) -> tuple[int, str]:
     doc["received_at"] = datetime.now(timezone.utc).isoformat()
     doc["bus_message_id"] = str(message.get("messageId") or message.get("message_id") or "")
     store.upsert(EVENTS, event["id"], doc)
+    project(event, store)
     return 204, "stored"
 
 

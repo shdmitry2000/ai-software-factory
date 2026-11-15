@@ -1,0 +1,138 @@
+"""Projections: the readable state built from the event log.
+
+    runs/{run}              one per run: workflow, engine, status, times, failure, graph
+    nodes/{run}:{node}      one per node of a run: status, times, agent, sandbox, attempts
+    engines/{engine}        one per engine: last heartbeat, slots, halted/paused, pin
+
+Every rule is order-independent and idempotent, because the bus delivers late and twice:
+- a terminal status always beats a non-terminal one; among non-terminal statuses the event
+  with the later time wins; among terminal ones the later time wins too;
+- start times keep the minimum, end and "last seen" times the maximum;
+- nothing is counted incrementally (counts are computed when read).
+So any order of the same events, applied any number of times, yields the same documents.
+Collections are flat (no subcollections) so the model maps 1:1 onto a relational store.
+"""
+from __future__ import annotations
+
+from typing import Any
+
+from mission_control.ports import Event, StateStore
+
+RUNS, NODES, ENGINES = "runs", "nodes", "engines"
+TERMINAL_RUN = {"completed", "failed", "cancelled", "abandoned", "lost"}
+TERMINAL_NODE = {"completed", "failed", "skipped", "reused"}
+
+RUN_STATUS = {
+    "run.started": "running", "run.resumed": "running", "run.paused": "paused",
+    "run.completed": "completed", "run.failed": "failed", "run.cancelled": "cancelled",
+    "run.abandoned": "abandoned", "run.lost": "lost",
+}
+NODE_STATUS = {
+    "node.started": "running", "node.suspended": "suspended", "node.completed": "completed",
+    "node.failed": "failed", "node.skipped": "skipped", "node.reused": "reused",
+}
+
+
+def _min(a: Any, b: Any) -> Any:
+    return b if a is None else a if b is None else min(a, b)
+
+
+def _max(a: Any, b: Any) -> Any:
+    return b if a is None else a if b is None else max(a, b)
+
+
+def _status(doc: dict, status: str, t: str, terminal: set[str]) -> None:
+    """Set doc['status'] if this (status, time) beats the current one."""
+    cur, cur_t = doc.get("status"), doc.get("status_time")
+    new_key = (status in terminal, t, status)
+    cur_key = (cur in terminal, cur_t or "", cur or "")
+    if cur is None or new_key > cur_key:
+        doc["status"], doc["status_time"] = status, t
+
+
+def _base(doc: dict | None, **ids: Any) -> dict:
+    out = dict(doc or {})
+    for k, v in ids.items():
+        if v:
+            out[k] = v
+    return out
+
+
+def _apply_run(doc: dict | None, ev: Event, kind: str) -> dict:
+    d, t, data = _base(doc, run=ev.get("factoryrun"), engine=ev.get("factoryengine"),
+                       product=ev.get("factoryproduct"), work_item=ev.get("factoryworkitem"),
+                       parent_run=ev.get("factoryparentrun")), ev["time"], ev.get("data", {})
+    if data.get("workflow"):
+        d["workflow"] = data["workflow"]
+    d["last_event_at"] = _max(d.get("last_event_at"), t)
+    if kind == "graph.declared":
+        d["graph"] = {"nodes": data.get("nodes", []), "edges": data.get("edges", [])}
+        return d
+    status = RUN_STATUS[kind]
+    _status(d, status, t, TERMINAL_RUN)
+    d["attempt"] = _max(d.get("attempt"), data.get("attempt"))
+    if kind == "run.started":
+        d["started_at"] = _min(d.get("started_at"), t)
+        if data.get("trigger"):
+            d["trigger"] = data["trigger"]
+    if status in TERMINAL_RUN:
+        d["ended_at"] = _max(d.get("ended_at"), t)
+        for k in ("duration_ms", "outcome", "failure_class", "failed_node", "summary", "tokens"):
+            if data.get(k) is not None and d.get("status") == status:
+                d[k] = data[k]
+    if kind == "run.paused" and d.get("status") == "paused":
+        d["waiting_for"] = data.get("waiting_for", "other")
+    return d
+
+
+def _apply_node(doc: dict | None, ev: Event, kind: str) -> dict:
+    data = ev.get("data", {})
+    d, t = _base(doc, run=ev.get("factoryrun"), node=data.get("node"), engine=ev.get("factoryengine"),
+                 workflow=data.get("workflow")), ev["time"]
+    status = NODE_STATUS[kind]
+    _status(d, status, t, TERMINAL_NODE)
+    d["attempts"] = _max(d.get("attempts"), data.get("attempt"))
+    d["last_event_at"] = _max(d.get("last_event_at"), t)
+    if kind == "node.started":
+        d["started_at"] = _min(d.get("started_at"), t)
+        for k in ("agent", "sandbox"):
+            if data.get(k):
+                d[k] = data[k]
+    if status in TERMINAL_NODE or status == "suspended":
+        d["ended_at"] = _max(d.get("ended_at"), t)
+        for k in ("duration_ms", "tokens", "failure_class", "summary", "reason", "from_attempt"):
+            if data.get(k) is not None and d.get("status") == status:
+                d[k] = data[k]
+    return d
+
+
+def _apply_engine(doc: dict | None, ev: Event) -> dict:
+    d, t, data = _base(doc, engine=ev.get("factoryengine")), ev["time"], ev.get("data", {})
+    if t >= (d.get("last_heartbeat") or ""):
+        d["last_heartbeat"] = t
+        for k in ("slots", "halted", "paused", "archon_pin", "sandbox"):
+            if k in data:
+                d[k] = data[k]
+    return d
+
+
+def project(ev: Event, store: StateStore) -> list[str]:
+    """Apply one event to the projections; returns the documents touched (collection/id)."""
+    kind = str(ev.get("type", "")).removeprefix("dev.factory.")
+    run = ev.get("factoryrun", "")
+    if kind in RUN_STATUS or kind == "graph.declared":
+        if not run:
+            return []
+        store.update(RUNS, run, lambda doc: _apply_run(doc, ev, kind))
+        return [f"{RUNS}/{run}"]
+    if kind in NODE_STATUS:
+        node = (ev.get("data") or {}).get("node")
+        if not (run and node):
+            return []
+        key = f"{run}:{node}"
+        store.update(NODES, key, lambda doc: _apply_node(doc, ev, kind))
+        return [f"{NODES}/{key}"]
+    if kind == "engine.heartbeat" and ev.get("factoryengine"):
+        store.update(ENGINES, ev["factoryengine"], lambda doc: _apply_engine(doc, ev))
+        return [f"{ENGINES}/{ev['factoryengine']}"]
+    return []
