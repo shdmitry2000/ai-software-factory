@@ -1,0 +1,21 @@
+{
+  "specversion": "1.0",
+  "id": "archon:1b0e4c2d-77aa-4f0b-9e1c-5a3d2c1b0f99",
+  "source": "factory://factory-1/archon",
+  "type": "dev.factory.run.failed",
+  "subject": "run/8f3c21",
+  "time": "2026-11-15T11:58:15Z",
+  "datacontenttype": "application/json",
+  "factoryengine": "factory-1",
+  "factoryproduct": "file-to-markdown-convertor",
+  "factoryrun": "8f3c21",
+  "factoryworkitem": "tracker:github/shdmitry2000/file-to-markdown-convertor#14",
+  "data": {
+    "workflow": "archon-loop",
+    "attempt": 1,
+    "failure_class": "timeout",
+    "failed_node": "app-check",
+    "summary": "converter not healthy after 45 s",
+    "duration_ms": 1635000
+  }
+}

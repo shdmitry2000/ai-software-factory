@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://factory.dev/schema/data.v1.json",
+  "title": "Factory event data, per type",
+  "description": "One definition per event type, keyed by the type without the dev.factory. prefix. A type listed in types.md but not here may not be published yet.",
+  "$defs": {
+    "agent": {
+      "type": "object",
+      "required": ["provider"],
+      "properties": {
+        "provider": {"type": "string"},
+        "model": {"type": "string"},
+        "tier": {"enum": ["small", "medium", "large"]}
+      },
+      "additionalProperties": false
+    },
+    "failure_class": {
+      "enum": ["fatal", "transient", "unknown", "timeout", "exec_failed", "output_contract",
+               "max_iterations", "child_failed", "cancelled", "config", "infrastructure"]
+    },
+    "run_ref": {
+      "type": "object",
+      "required": ["workflow"],
+      "properties": {
+        "workflow": {"type": "string"},
+        "attempt": {"type": "integer", "minimum": 1}
+      }
+    },
+    "node_ref": {
+      "type": "object",
+      "required": ["workflow", "node"],
+      "properties": {
+        "workflow": {"type": "string"},
+        "node": {"type": "string"},
+        "attempt": {"type": "integer", "minimum": 1}
+      }
+    },
+    "text": {"type": "string", "maxLength": 16384},
+
+    "run.started": {
+      "allOf": [{"$ref": "#/$defs/run_ref"}],
+      "properties": {
+        "inputs": {"type": "object", "description": "Workflow inputs, secrets and holdout paths removed"},
+        "trigger": {"enum": ["schedule", "manual", "command", "child"]}
+      }
+    },
+    "run.completed": {
+      "allOf": [{"$ref": "#/$defs/run_ref"}],
+      "required": ["duration_ms"],
+      "properties": {
+        "outcome": {"enum": ["succeeded", "failed"]},
+        "duration_ms": {"type": "integer", "minimum": 0},
+        "tokens": {"type": "integer", "minimum": 0}
+      }
+    },
+    "run.failed": {
+      "allOf": [{"$ref": "#/$defs/run_ref"}],
+      "required": ["failure_class"],
+      "properties": {
+        "failure_class": {"$ref": "#/$defs/failure_class"},
+        "failed_node": {"type": "string"},
+        "summary": {"$ref": "#/$defs/text"},
+        "duration_ms": {"type": "integer", "minimum": 0}
+      }
+    },
+    "run.cancelled": {
+      "allOf": [{"$ref": "#/$defs/run_ref"}],
+      "properties": {"by": {"type": "string"}, "reason": {"$ref": "#/$defs/text"}}
+    },
+    "run.paused": {
+      "allOf": [{"$ref": "#/$defs/run_ref"}],
+      "required": ["waiting_for"],
+      "properties": {"waiting_for": {"enum": ["ci", "usage_limit", "approval", "other"]}, "detail": {"$ref": "#/$defs/text"}}
+    },
+    "run.resumed": {
+      "allOf": [{"$ref": "#/$defs/run_ref"}],
+      "required": ["attempt"],
+      "properties": {"reused_nodes": {"type": "array", "items": {"type": "string"}}}
+    },
+    "run.abandoned": {
+      "allOf": [{"$ref": "#/$defs/run_ref"}],
+      "required": ["silent_for_s"],
+      "properties": {"silent_for_s": {"type": "integer", "minimum": 0}, "branch_kept": {"type": "string"}}
+    },
+    "run.lost": {
+      "allOf": [{"$ref": "#/$defs/run_ref"}],
+      "required": ["last_heartbeat"],
+      "properties": {"last_heartbeat": {"type": "string", "format": "date-time"}}
+    },
+    "graph.declared": {
+      "type": "object",
+      "required": ["workflow", "nodes", "edges"],
+      "properties": {
+        "workflow": {"type": "string"},
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id"],
+            "properties": {"id": {"type": "string"}, "kind": {"type": "string"}, "label": {"type": "string"}}
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from", "to"],
+            "properties": {"from": {"type": "string"}, "to": {"type": "string"}, "condition": {"type": "string"}}
+          }
+        }
+      }
+    },
+    "node.started": {
+      "allOf": [{"$ref": "#/$defs/node_ref"}],
+      "properties": {
+        "agent": {"$ref": "#/$defs/agent"},
+        "sandbox": {"type": "string", "pattern": "^(container|worktree|none):.*$"}
+      }
+    },
+    "node.completed": {
+      "allOf": [{"$ref": "#/$defs/node_ref"}],
+      "required": ["duration_ms"],
+      "properties": {
+        "duration_ms": {"type": "integer", "minimum": 0},
+        "tokens": {"type": "integer", "minimum": 0},
+        "summary": {"$ref": "#/$defs/text"}
+      }
+    },
+    "node.failed": {
+      "allOf": [{"$ref": "#/$defs/node_ref"}],
+      "required": ["failure_class"],
+      "properties": {
+        "failure_class": {"$ref": "#/$defs/failure_class"},
+        "summary": {"$ref": "#/$defs/text"},
+        "duration_ms": {"type": "integer", "minimum": 0}
+      }
+    },
+    "node.skipped": {
+      "allOf": [{"$ref": "#/$defs/node_ref"}],
+      "properties": {"reason": {"type": "string"}}
+    },
+    "node.reused": {
+      "allOf": [{"$ref": "#/$defs/node_ref"}],
+      "required": ["from_attempt"],
+      "properties": {"from_attempt": {"type": "integer", "minimum": 1}}
+    },
+    "node.suspended": {
+      "allOf": [{"$ref": "#/$defs/node_ref"}],
+      "properties": {"reason": {"type": "string"}}
+    },
+    "engine.heartbeat": {
+      "type": "object",
+      "required": ["slots", "halted", "paused"],
+      "properties": {
+        "slots": {
+          "type": "object",
+          "required": ["total", "busy"],
+          "properties": {"total": {"type": "integer", "minimum": 0}, "busy": {"type": "integer", "minimum": 0}}
+        },
+        "halted": {"type": "boolean"},
+        "paused": {"type": "boolean"},
+        "archon_pin": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
+        "bridge_cursor": {"type": "string"},
+        "sandbox": {"enum": ["docker", "podman", "worktree", "none"]}
+      }
+    },
+    "workitem.claimed": {
+      "type": "object",
+      "required": ["claimed_by"],
+      "properties": {
+        "claimed_by": {
+          "type": "object",
+          "required": ["engine"],
+          "properties": {"engine": {"type": "string"}, "run": {"type": "string"}}
+        },
+        "evidence": {"type": "string"}
+      }
+    }
+  }
+}

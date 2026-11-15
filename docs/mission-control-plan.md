@@ -20,7 +20,7 @@ Legend: ☐ to do · ◐ in progress · ☑ done
 |---|---|---|---|
 | A1 | Write the event type list (`dev.factory.<entity>.<verb>`) | `schema/types.md` lists every type with one line each | ☑ |
 | A2 | JSON Schema for the CloudEvents envelope + factory extensions | 3 hand-written example events validate | ☑ |
-| A3 | JSON Schema per event type's `data` | every example in `schema/examples/` validates in CI | ☐ |
+| A3 | JSON Schema per event type's `data` (P0 types now; each later stage adds the types it publishes) | every example in `schema/examples/` validates in CI | ☑ |
 | A4 | Python package skeleton `mission_control` with `ports.py` (EventBus, StateStore, WorkTracker, CodeHost, MemoryStore, EngineAdapter, Secrets, Notifier) | `python -c "import mission_control.ports"` works | ☐ |
 | A5 | Contract test suite skeleton, parametrised by adapter | `pytest contract_tests` runs (no adapters yet, all skipped) | ☐ |
 | A6 | In-memory adapters for EventBus and StateStore | their contract tests pass | ☐ |

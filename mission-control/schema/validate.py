@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate example events against the envelope (and, once they exist, their data schemas).
+"""Validate example events: envelope, type list, and the type's data schema.
 
     uv run --with jsonschema --with rfc3339-validator python mission-control/schema/validate.py
 """
@@ -14,6 +14,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 HERE = Path(__file__).resolve().parent
 TYPES = {line.split("`")[1] for line in (HERE / "types.md").read_text().splitlines()
          if line.startswith("| `dev.factory.")}
+DATA = json.loads((HERE / "data.v1.json").read_text())
 
 
 def main() -> int:
@@ -26,9 +27,11 @@ def main() -> int:
         errors = [e.message for e in envelope.iter_errors(event)]
         if event.get("type") not in TYPES:
             errors.append(f"type {event.get('type')!r} is not in types.md")
-        data_schema = HERE / "data" / f"{event.get('type', '').removeprefix('dev.factory.')}.json"
-        if data_schema.exists():
-            v = Draft202012Validator(json.loads(data_schema.read_text()), format_checker=FormatChecker())
+        key = str(event.get("type", "")).removeprefix("dev.factory.")
+        if key not in DATA["$defs"]:
+            errors.append(f"no data schema for {key!r} in data.v1.json")
+        else:
+            v = Draft202012Validator({**DATA, "$ref": f"#/$defs/{key}"}, format_checker=FormatChecker())
             errors += [f"data: {e.message}" for e in v.iter_errors(event.get("data", {}))]
         print(("ok   " if not errors else "FAIL ") + path.name)
         for e in errors:
