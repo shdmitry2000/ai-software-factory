@@ -1,0 +1,18 @@
+{
+  "specversion": "1.0",
+  "id": "bridge:factory-1:2026-11-15T12:22:00Z",
+  "source": "factory://factory-1/bridge",
+  "type": "dev.factory.engine.heartbeat",
+  "subject": "engine/factory-1",
+  "time": "2026-11-15T12:22:00Z",
+  "datacontenttype": "application/json",
+  "factoryengine": "factory-1",
+  "data": {
+    "slots": {"total": 1, "busy": 1},
+    "halted": false,
+    "paused": false,
+    "archon_pin": "1cfb8fc541580fe5edf15e9a504b572bc9bb45bb",
+    "bridge_cursor": "2026-11-15T12:21:58Z",
+    "sandbox": "docker"
+  }
+}

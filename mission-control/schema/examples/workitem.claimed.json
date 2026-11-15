@@ -1,0 +1,17 @@
+{
+  "specversion": "1.0",
+  "id": "github:delivery-5d1e2f80-c3a4-11ef-8b5f-2e8a1c9d0f11",
+  "source": "factory://ingest/github",
+  "type": "dev.factory.workitem.claimed",
+  "subject": "workitem/tracker:github/shdmitry2000/file-to-markdown-convertor#14",
+  "time": "2026-11-15T11:31:04Z",
+  "datacontenttype": "application/json",
+  "factoryengine": "factory-1",
+  "factoryproduct": "file-to-markdown-convertor",
+  "factoryrun": "8f3c21",
+  "factoryworkitem": "tracker:github/shdmitry2000/file-to-markdown-convertor#14",
+  "data": {
+    "claimed_by": {"engine": "factory-1", "run": "8f3c21"},
+    "evidence": "codehost:github/shdmitry2000/file-to-markdown-convertor#14/comment/2481190"
+  }
+}
