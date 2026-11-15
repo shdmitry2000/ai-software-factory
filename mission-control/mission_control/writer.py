@@ -44,11 +44,11 @@ def handle(body: Any, store: StateStore) -> tuple[int, str]:
 
 
 def make_app(store: StateStore):
-    """A WSGI app: POST / takes a push; GET /healthz answers ok."""
+    """A WSGI app: POST / takes a push; GET /health answers ok (Cloud Run reserves paths ending in z, so not /healthz)."""
 
     def app(environ, start_response):
         method, path = environ.get("REQUEST_METHOD", "GET"), environ.get("PATH_INFO", "/")
-        if method == "GET" and path == "/healthz":
+        if method == "GET" and path == "/health":
             start_response("200 OK", [("Content-Type", "text/plain")])
             return [b"ok"]
         if method != "POST" or path != "/":
