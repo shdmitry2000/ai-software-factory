@@ -1,0 +1,205 @@
+{
+ "runs": [
+  {
+   "_rowid": 1,
+   "id": "c9df0151-50ff-45b9-8b7d-88401e928fd5",
+   "origin": "{\"userId\":\"0b39155a4743863fac82f9ee15c673ed\"}",
+   "conversation_id": "00000000-0000-4000-8000-000000003640",
+   "codebase_id": "05aa4cfd0975ad5ac9470908c5d171f8",
+   "workflow_name": "mc-probe",
+   "user_message": "",
+   "status": "completed",
+   "outcome": null,
+   "current_step_index": null,
+   "metadata": "{\"ai_configuration\":{\"version\":1,\"assistant\":\"claude\",\"assistants\":{\"claude\":{},\"codex\":{},\"opencode\":{},\"pi\":{},\"copilot\":{}},\"baseAiProfile\":{\"defaultProvider\":\"claude\",\"aliases\":{\"small\":{\"provider\":\"claude\",\"model\":\"haiku\"},\"medium\":{\"provider\":\"claude\",\"model\":\"sonnet\"},\"large\":{\"provider\":\"claude\",\"model\":\"opus\"}}},\"modelOverrides\":{}},\"model_bindings\":{\"overrides\":{},\"effective\":{\"defaultProvider\":\"claude\",\"aliases\":{\"small\":{\"provider\":\"claude\",\"model\":\"haiku\"},\"medium\":{\"provider\":\"claude\",\"model\":\"sonnet\"},\"large\":{\"provider\":\"claude\",\"model\":\"opus\"}}}},\"dispatch\":{\"base_branch\":\"\",\"source\":\"project\"},\"execution_owner\":{\"host\":\"factory-1.me-west1-a.c.me-sb-dgcp-dpoc-pocyosh-pr.internal\",\"pid\":2993,\"uid\":0},\"workflow_source\":{\"version\":1,\"root\":\"/root/.archon/workspaces/_local/mc-probe/workflow-source/runs/c9df0151-50ff-45b9-8b7d-88401e928fd5\",\"origin\":\"/root/mc-probe\",\"captured_at\":\"2026-11-15T12:51:22.844Z\",\"digest\":\"07d6e46fd1da193726d1d201006f03d532028f9a0318fd874fae8fd1ea5bad94\",\"source_config\":{\"load_default_workflows\":true,\"load_default_commands\":true},\"file_count\":144,\"byte_count\":811551},\"terminal_graph\":{\"node_ids\":[\"pick\",\"build\",\"validate\",\"app-check\",\"holdout-verify\",\"review\",\"merge-gate\"]},\"node_counts\":{\"completed\":7,\"failed\":0,\"skipped\":0,\"total\":7}}",
+   "parent_conversation_id": null,
+   "user_id": "0b39155a4743863fac82f9ee15c673ed",
+   "parent_run_id": null,
+   "adopted_from_run_id": null,
+   "started_at": "2026-11-15 12:51:23",
+   "completed_at": "2026-11-15 12:51:30",
+   "last_activity_at": "2026-11-15 12:51:23",
+   "working_path": "/root/mc-probe",
+   "output_root": "/root/.archon/workspaces/_local/mc-probe",
+   "checkout_baseline": "{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:23.680Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}"
+  }
+ ],
+ "events": [
+  {
+   "_rowid": 1,
+   "id": "5005aa9a-cbe5-4ecc-b7e5-c78134cb4aaa",
+   "workflow_run_id": "c9df0151-50ff-45b9-8b7d-88401e928fd5",
+   "event_order": 1,
+   "event_type": "workflow_started",
+   "step_index": null,
+   "step_name": null,
+   "data": "{\"workflowName\":\"mc-probe\",\"defaultAssistant\":\"claude\",\"provider\":\"claude\",\"model\":null,\"isolationMode\":\"in-place\",\"baseBranch\":\"\",\"userId\":\"0b39155a4743863fac82f9ee15c673ed\",\"userMessage\":\"\",\"origin\":\"cli\"}",
+   "created_at": "2026-11-15 12:51:24"
+  },
+  {
+   "_rowid": 2,
+   "id": "cde8e4ce-9208-4893-8619-731f507b6be7",
+   "workflow_run_id": "c9df0151-50ff-45b9-8b7d-88401e928fd5",
+   "event_order": 2,
+   "event_type": "node_started",
+   "step_index": null,
+   "step_name": "pick",
+   "data": "{\"node\":{\"id\":\"pick\",\"kind\":\"exec\",\"runtime\":\"sh\"},\"invocation\":{\"id\":\"5c7475c6-c900-4c24-8a4a-71ba59e4a886\",\"startedAt\":\"2026-11-15T12:51:24.141Z\",\"loopPath\":[],\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:24.142Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"attempt\":{\"id\":\"878a5040-9f92-4222-af59-a74df4379298\",\"startedAt\":\"2026-11-15T12:51:24.156Z\",\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:24.142Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"binding\":{},\"timing\":{\"startedAt\":\"2026-11-15T12:51:24.156Z\"},\"spend\":{\"tokens\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"costUsd\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"stopReason\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"numTurns\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"}},\"accounting\":\"node\",\"type\":\"bash\"}",
+   "created_at": "2026-11-15 12:51:24"
+  },
+  {
+   "_rowid": 3,
+   "id": "ba0a33e4-2db2-48e7-9add-576c0cdb5b92",
+   "workflow_run_id": "c9df0151-50ff-45b9-8b7d-88401e928fd5",
+   "event_order": 3,
+   "event_type": "node_completed",
+   "step_index": null,
+   "step_name": "pick",
+   "data": "{\"node\":{\"id\":\"pick\",\"kind\":\"exec\",\"runtime\":\"sh\"},\"invocation\":{\"id\":\"5c7475c6-c900-4c24-8a4a-71ba59e4a886\",\"startedAt\":\"2026-11-15T12:51:24.141Z\",\"loopPath\":[],\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:24.142Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"attempt\":{\"id\":\"878a5040-9f92-4222-af59-a74df4379298\",\"startedAt\":\"2026-11-15T12:51:24.156Z\",\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:24.142Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"binding\":{},\"timing\":{\"startedAt\":\"2026-11-15T12:51:24.156Z\",\"durationMs\":31},\"spend\":{\"tokens\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"costUsd\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"stopReason\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"numTurns\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"}},\"accounting\":\"node\",\"type\":\"bash\",\"duration_ms\":31,\"node_output\":\"picked\"}",
+   "created_at": "2026-11-15 12:51:24"
+  },
+  {
+   "_rowid": 4,
+   "id": "f0e78cca-47b6-45b9-b245-07a70f96ce85",
+   "workflow_run_id": "c9df0151-50ff-45b9-8b7d-88401e928fd5",
+   "event_order": 4,
+   "event_type": "node_started",
+   "step_index": null,
+   "step_name": "build",
+   "data": "{\"node\":{\"id\":\"build\",\"kind\":\"exec\",\"runtime\":\"sh\"},\"invocation\":{\"id\":\"1222d497-336e-4aac-9bb4-04275ae75c2b\",\"startedAt\":\"2026-11-15T12:51:24.178Z\",\"loopPath\":[],\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:24.179Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"attempt\":{\"id\":\"9bfc25b2-dca1-4a2b-ac0f-ad03ced29d26\",\"startedAt\":\"2026-11-15T12:51:24.189Z\",\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:24.179Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"binding\":{},\"timing\":{\"startedAt\":\"2026-11-15T12:51:24.189Z\"},\"spend\":{\"tokens\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"costUsd\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"stopReason\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"numTurns\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"}},\"accounting\":\"node\",\"type\":\"bash\"}",
+   "created_at": "2026-11-15 12:51:24"
+  },
+  {
+   "_rowid": 5,
+   "id": "a9d162df-1315-4ed3-813e-8a2dcb68869b",
+   "workflow_run_id": "c9df0151-50ff-45b9-8b7d-88401e928fd5",
+   "event_order": 5,
+   "event_type": "node_completed",
+   "step_index": null,
+   "step_name": "build",
+   "data": "{\"node\":{\"id\":\"build\",\"kind\":\"exec\",\"runtime\":\"sh\"},\"invocation\":{\"id\":\"1222d497-336e-4aac-9bb4-04275ae75c2b\",\"startedAt\":\"2026-11-15T12:51:24.178Z\",\"loopPath\":[],\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:24.179Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"attempt\":{\"id\":\"9bfc25b2-dca1-4a2b-ac0f-ad03ced29d26\",\"startedAt\":\"2026-11-15T12:51:24.189Z\",\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:24.179Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"binding\":{},\"timing\":{\"startedAt\":\"2026-11-15T12:51:24.189Z\",\"durationMs\":2020},\"spend\":{\"tokens\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"costUsd\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"stopReason\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"numTurns\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"}},\"accounting\":\"node\",\"type\":\"bash\",\"duration_ms\":2020,\"node_output\":\"built\"}",
+   "created_at": "2026-11-15 12:51:26"
+  },
+  {
+   "_rowid": 6,
+   "id": "bcad8e70-3b33-4db3-a1a4-0f2d46556bda",
+   "workflow_run_id": "c9df0151-50ff-45b9-8b7d-88401e928fd5",
+   "event_order": 6,
+   "event_type": "node_started",
+   "step_index": null,
+   "step_name": "validate",
+   "data": "{\"node\":{\"id\":\"validate\",\"kind\":\"exec\",\"runtime\":\"sh\"},\"invocation\":{\"id\":\"65f2050f-8a5e-4bd3-be8e-bc7672d334c9\",\"startedAt\":\"2026-11-15T12:51:26.204Z\",\"loopPath\":[],\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:26.204Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"attempt\":{\"id\":\"7693c32c-8c24-4123-b83e-8c2031ca920a\",\"startedAt\":\"2026-11-15T12:51:26.225Z\",\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:26.204Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"binding\":{},\"timing\":{\"startedAt\":\"2026-11-15T12:51:26.225Z\"},\"spend\":{\"tokens\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"costUsd\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"stopReason\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"numTurns\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"}},\"accounting\":\"node\",\"type\":\"bash\"}",
+   "created_at": "2026-11-15 12:51:26"
+  },
+  {
+   "_rowid": 7,
+   "id": "f8be36cd-cba8-4419-8024-2a5c5204544e",
+   "workflow_run_id": "c9df0151-50ff-45b9-8b7d-88401e928fd5",
+   "event_order": 7,
+   "event_type": "node_started",
+   "step_index": null,
+   "step_name": "app-check",
+   "data": "{\"node\":{\"id\":\"app-check\",\"kind\":\"exec\",\"runtime\":\"sh\"},\"invocation\":{\"id\":\"f5bbefd6-91ac-4c8b-976c-f52975e72b11\",\"startedAt\":\"2026-11-15T12:51:26.204Z\",\"loopPath\":[],\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:26.205Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"attempt\":{\"id\":\"b35a3b81-8b83-45eb-a50a-456079e65daf\",\"startedAt\":\"2026-11-15T12:51:26.229Z\",\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:26.205Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"binding\":{},\"timing\":{\"startedAt\":\"2026-11-15T12:51:26.229Z\"},\"spend\":{\"tokens\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"costUsd\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"stopReason\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"numTurns\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"}},\"accounting\":\"node\",\"type\":\"bash\"}",
+   "created_at": "2026-11-15 12:51:26"
+  },
+  {
+   "_rowid": 8,
+   "id": "c20f45c8-da46-48bb-90f8-312677e672d2",
+   "workflow_run_id": "c9df0151-50ff-45b9-8b7d-88401e928fd5",
+   "event_order": 8,
+   "event_type": "node_started",
+   "step_index": null,
+   "step_name": "holdout-verify",
+   "data": "{\"node\":{\"id\":\"holdout-verify\",\"kind\":\"exec\",\"runtime\":\"sh\"},\"invocation\":{\"id\":\"cbf3038d-a03b-45a8-b0ae-5e59193e0815\",\"startedAt\":\"2026-11-15T12:51:26.204Z\",\"loopPath\":[],\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:26.206Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"attempt\":{\"id\":\"2dcc8b18-0c2c-48e8-b3af-f9a9e4fed80c\",\"startedAt\":\"2026-11-15T12:51:26.232Z\",\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:26.206Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"binding\":{},\"timing\":{\"startedAt\":\"2026-11-15T12:51:26.232Z\"},\"spend\":{\"tokens\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"costUsd\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"stopReason\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"numTurns\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"}},\"accounting\":\"node\",\"type\":\"bash\"}",
+   "created_at": "2026-11-15 12:51:26"
+  },
+  {
+   "_rowid": 9,
+   "id": "ff152902-85ca-4542-91bb-e5efefb3f793",
+   "workflow_run_id": "c9df0151-50ff-45b9-8b7d-88401e928fd5",
+   "event_order": 9,
+   "event_type": "node_completed",
+   "step_index": null,
+   "step_name": "holdout-verify",
+   "data": "{\"node\":{\"id\":\"holdout-verify\",\"kind\":\"exec\",\"runtime\":\"sh\"},\"invocation\":{\"id\":\"cbf3038d-a03b-45a8-b0ae-5e59193e0815\",\"startedAt\":\"2026-11-15T12:51:26.204Z\",\"loopPath\":[],\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:26.206Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"attempt\":{\"id\":\"2dcc8b18-0c2c-48e8-b3af-f9a9e4fed80c\",\"startedAt\":\"2026-11-15T12:51:26.232Z\",\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:26.206Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"binding\":{},\"timing\":{\"startedAt\":\"2026-11-15T12:51:26.232Z\",\"durationMs\":2041},\"spend\":{\"tokens\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"costUsd\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"stopReason\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"numTurns\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"}},\"accounting\":\"node\",\"type\":\"bash\",\"duration_ms\":2041,\"node_output\":\"holdouts-ok\"}",
+   "created_at": "2026-11-15 12:51:28"
+  },
+  {
+   "_rowid": 10,
+   "id": "da7594fe-3c6a-47d1-85bf-22d6427c0ade",
+   "workflow_run_id": "c9df0151-50ff-45b9-8b7d-88401e928fd5",
+   "event_order": 10,
+   "event_type": "node_completed",
+   "step_index": null,
+   "step_name": "validate",
+   "data": "{\"node\":{\"id\":\"validate\",\"kind\":\"exec\",\"runtime\":\"sh\"},\"invocation\":{\"id\":\"65f2050f-8a5e-4bd3-be8e-bc7672d334c9\",\"startedAt\":\"2026-11-15T12:51:26.204Z\",\"loopPath\":[],\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:26.204Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"attempt\":{\"id\":\"7693c32c-8c24-4123-b83e-8c2031ca920a\",\"startedAt\":\"2026-11-15T12:51:26.225Z\",\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:26.204Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"binding\":{},\"timing\":{\"startedAt\":\"2026-11-15T12:51:26.225Z\",\"durationMs\":3041},\"spend\":{\"tokens\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"costUsd\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"stopReason\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"numTurns\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"}},\"accounting\":\"node\",\"type\":\"bash\",\"duration_ms\":3041,\"node_output\":\"tests-ok\"}",
+   "created_at": "2026-11-15 12:51:29"
+  },
+  {
+   "_rowid": 11,
+   "id": "241ee9ff-323c-4b16-9628-29e77052f0c2",
+   "workflow_run_id": "c9df0151-50ff-45b9-8b7d-88401e928fd5",
+   "event_order": 11,
+   "event_type": "node_completed",
+   "step_index": null,
+   "step_name": "app-check",
+   "data": "{\"node\":{\"id\":\"app-check\",\"kind\":\"exec\",\"runtime\":\"sh\"},\"invocation\":{\"id\":\"f5bbefd6-91ac-4c8b-976c-f52975e72b11\",\"startedAt\":\"2026-11-15T12:51:26.204Z\",\"loopPath\":[],\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:26.205Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"attempt\":{\"id\":\"b35a3b81-8b83-45eb-a50a-456079e65daf\",\"startedAt\":\"2026-11-15T12:51:26.229Z\",\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:26.205Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"binding\":{},\"timing\":{\"startedAt\":\"2026-11-15T12:51:26.229Z\",\"durationMs\":4043},\"spend\":{\"tokens\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"costUsd\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"stopReason\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"numTurns\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"}},\"accounting\":\"node\",\"type\":\"bash\",\"duration_ms\":4043,\"node_output\":\"app-ok\"}",
+   "created_at": "2026-11-15 12:51:30"
+  },
+  {
+   "_rowid": 12,
+   "id": "6b89cced-9f01-40a3-a435-76ad1523a9b0",
+   "workflow_run_id": "c9df0151-50ff-45b9-8b7d-88401e928fd5",
+   "event_order": 12,
+   "event_type": "node_started",
+   "step_index": null,
+   "step_name": "review",
+   "data": "{\"node\":{\"id\":\"review\",\"kind\":\"exec\",\"runtime\":\"sh\"},\"invocation\":{\"id\":\"997ae048-30c9-4968-bcf4-1b4db4d60b0b\",\"startedAt\":\"2026-11-15T12:51:30.252Z\",\"loopPath\":[],\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:30.253Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"attempt\":{\"id\":\"935473b2-effb-4169-a7ff-90ca571a3c1d\",\"startedAt\":\"2026-11-15T12:51:30.262Z\",\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:30.253Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"binding\":{},\"timing\":{\"startedAt\":\"2026-11-15T12:51:30.262Z\"},\"spend\":{\"tokens\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"costUsd\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"stopReason\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"numTurns\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"}},\"accounting\":\"node\",\"type\":\"bash\"}",
+   "created_at": "2026-11-15 12:51:30"
+  },
+  {
+   "_rowid": 13,
+   "id": "1f69f443-b1ee-4c29-bd20-5ab64284658b",
+   "workflow_run_id": "c9df0151-50ff-45b9-8b7d-88401e928fd5",
+   "event_order": 13,
+   "event_type": "node_completed",
+   "step_index": null,
+   "step_name": "review",
+   "data": "{\"node\":{\"id\":\"review\",\"kind\":\"exec\",\"runtime\":\"sh\"},\"invocation\":{\"id\":\"997ae048-30c9-4968-bcf4-1b4db4d60b0b\",\"startedAt\":\"2026-11-15T12:51:30.252Z\",\"loopPath\":[],\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:30.253Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"attempt\":{\"id\":\"935473b2-effb-4169-a7ff-90ca571a3c1d\",\"startedAt\":\"2026-11-15T12:51:30.262Z\",\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:30.253Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"binding\":{},\"timing\":{\"startedAt\":\"2026-11-15T12:51:30.262Z\",\"durationMs\":18},\"spend\":{\"tokens\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"costUsd\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"stopReason\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"numTurns\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"}},\"accounting\":\"node\",\"type\":\"bash\",\"duration_ms\":18,\"node_output\":\"ready\"}",
+   "created_at": "2026-11-15 12:51:30"
+  },
+  {
+   "_rowid": 14,
+   "id": "ba5f3929-1f8b-4e48-81d2-1d68d85095c5",
+   "workflow_run_id": "c9df0151-50ff-45b9-8b7d-88401e928fd5",
+   "event_order": 14,
+   "event_type": "node_started",
+   "step_index": null,
+   "step_name": "merge-gate",
+   "data": "{\"node\":{\"id\":\"merge-gate\",\"kind\":\"exec\",\"runtime\":\"sh\"},\"invocation\":{\"id\":\"3f5772d1-5c18-4883-89e9-f71e81aadac3\",\"startedAt\":\"2026-11-15T12:51:30.275Z\",\"loopPath\":[],\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:30.275Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"attempt\":{\"id\":\"e4b2ac5b-ea0a-4d6a-a9b8-b4bf53cf3797\",\"startedAt\":\"2026-11-15T12:51:30.284Z\",\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:30.275Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"binding\":{},\"timing\":{\"startedAt\":\"2026-11-15T12:51:30.284Z\"},\"spend\":{\"tokens\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"costUsd\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"stopReason\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"numTurns\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"}},\"accounting\":\"node\",\"type\":\"bash\"}",
+   "created_at": "2026-11-15 12:51:30"
+  },
+  {
+   "_rowid": 15,
+   "id": "92b3d72d-d119-4f6e-a3ff-730655800f78",
+   "workflow_run_id": "c9df0151-50ff-45b9-8b7d-88401e928fd5",
+   "event_order": 15,
+   "event_type": "node_completed",
+   "step_index": null,
+   "step_name": "merge-gate",
+   "data": "{\"node\":{\"id\":\"merge-gate\",\"kind\":\"exec\",\"runtime\":\"sh\"},\"invocation\":{\"id\":\"3f5772d1-5c18-4883-89e9-f71e81aadac3\",\"startedAt\":\"2026-11-15T12:51:30.275Z\",\"loopPath\":[],\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:30.275Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"attempt\":{\"id\":\"e4b2ac5b-ea0a-4d6a-a9b8-b4bf53cf3797\",\"startedAt\":\"2026-11-15T12:51:30.284Z\",\"checkoutStart\":{\"kind\":\"git\",\"sampledAt\":\"2026-11-15T12:51:30.275Z\",\"commit\":\"bd91e6a0f7944c7cce7853058b541484bac620c3\",\"tree\":\"0fe364ad49466cdf68e557149ff60f3bd0adab03\",\"worktree\":{\"status\":\"clean\"}}},\"binding\":{},\"timing\":{\"startedAt\":\"2026-11-15T12:51:30.284Z\",\"durationMs\":19},\"spend\":{\"tokens\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"costUsd\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"stopReason\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"},\"numTurns\":{\"source\":\"unavailable\",\"reason\":\"not_applicable\"}},\"accounting\":\"node\",\"type\":\"bash\",\"duration_ms\":19,\"node_output\":\"merged\"}",
+   "created_at": "2026-11-15 12:51:30"
+  },
+  {
+   "_rowid": 16,
+   "id": "26437a55-07b0-439b-a23c-ecd587fd45c0",
+   "workflow_run_id": "c9df0151-50ff-45b9-8b7d-88401e928fd5",
+   "event_order": 16,
+   "event_type": "workflow_completed",
+   "step_index": null,
+   "step_name": null,
+   "data": "{\"duration_ms\":6164,\"terminal_record\":{\"run_id\":\"c9df0151-50ff-45b9-8b7d-88401e928fd5\",\"status\":\"completed\",\"outcome\":null,\"error\":null,\"first_failed_node\":null,\"nodes\":[{\"node_id\":\"pick\",\"state\":\"completed\"},{\"node_id\":\"build\",\"state\":\"completed\"},{\"node_id\":\"validate\",\"state\":\"completed\"},{\"node_id\":\"app-check\",\"state\":\"completed\"},{\"node_id\":\"holdout-verify\",\"state\":\"completed\"},{\"node_id\":\"review\",\"state\":\"completed\"},{\"node_id\":\"merge-gate\",\"state\":\"completed\"}],\"returns\":{\"availability\":\"unavailable\",\"node_id\":null,\"reason\":\"not_declared\"},\"artifacts\":{\"root\":\"/root/.archon/workspaces/_local/mc-probe/artifacts/runs/c9df0151-50ff-45b9-8b7d-88401e928fd5\",\"files\":[{\"path\":\".archon/typed-artifacts/08cb5834-1c02-4129-8a11-15c92266b8fc.json\",\"size\":94},{\"path\":\".archon/typed-artifacts/224137d6-2e97-4ae3-b207-4d1a6b10bbb1.json\",\"size\":94},{\"path\":\".archon/typed-artifacts/45a5797b-3cb1-4952-a436-ea5f6c264629.json\",\"size\":94},{\"path\":\".archon/typed-artifacts/9d25217a-e38c-47b5-a746-37d0764592f5.json\",\"size\":94},{\"path\":\".archon/typed-artifacts/cced83b9-6159-4622-af26-9146118a9967.json\",\"size\":94},{\"path\":\".archon/typed-artifacts/f50d5747-106f-4df9-af41-23dd5c2bd871.json\",\"size\":94},{\"path\":\".archon/typed-artifacts/fdcb147d-55df-4746-91dc-7b230933c718.json\",\"size\":94}],\"limitations\":[]}}}",
+   "created_at": "2026-11-15 12:51:30"
+  }
+ ]
+}
