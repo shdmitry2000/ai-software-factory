@@ -5,7 +5,7 @@ failed or was rerun, where each piece of work is, and how the agents handed work
 each other. Built on GCP Pub/Sub and Firestore, outside the factory VM, so history
 survives the weekly sandbox sweep.
 
-Status: design agreed 2026-11-15; P0 in progress. Pinned Archon: `1cfb8fc5`.
+Status: design agreed 2026-11-15; **P0 done 2026-11-15** (Stages A–D of the plan): factory-1's Archon runs reach Firestore projections live. Pinned Archon: `1cfb8fc5`.
 
 ## Goals
 

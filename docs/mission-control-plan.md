@@ -56,11 +56,11 @@ Legend: ☐ to do · ◐ in progress · ☑ done
 
 | # | Step | Done when | |
 |---|---|---|---|
-| D1 | `runs/{id}` projection from run events | a test run shows status, start, end | ☐ |
-| D2 | `runs/{id}/nodes/{node}` projection | each node shows status, agent, durations | ☐ |
-| D3 | `engines/{id}` projection | heartbeat and pin visible | ☐ |
-| D4 | `replay` command: rebuild projections from `events` | delete projections, replay, compare: identical | ☐ |
-| D5 | Rule: out-of-order and duplicate events converge | test shuffles 100 events: same final state | ☐ |
+| D1 | `runs/{id}` projection from run events | a test run shows status, start, end | ☑ |
+| D2 | `runs/{id}/nodes/{node}` projection | each node shows status, agent, durations | ☑ |
+| D3 | `engines/{id}` projection | heartbeat and pin visible | ☑ |
+| D4 | `replay` command: rebuild projections from `events` | delete projections, replay, compare: identical | ☑ |
+| D5 | Rule: out-of-order and duplicate events converge | test shuffles 100 events: same final state | ☑ |
 
 ## Stage E — First real lap (the factory itself)
 
