@@ -46,7 +46,7 @@ Legend: ☐ to do · ◐ in progress · ☑ done
 | C2 | IAP firewall for port 3090 | rule exists; added to the create script | ☑ |
 | C3 | `archon serve` as a systemd service on the VM | Archon console opens on the Mac through `gcloud compute start-iap-tunnel` | ☑ |
 | C4 | Find Archon's DB file and schema on the VM; read-only dump script | the script prints the last 10 events | ☑ |
-| C5 | Archon EngineAdapter: DB rows → CloudEvents (pure function); graph edges from the run's captured workflow source (`metadata.workflow_source.root`, `depends_on`) | unit tests on fixture rows; output validates against A3 schemas | ☐ |
+| C5 | Archon EngineAdapter: DB rows → CloudEvents (pure function); graph edges from the run's captured workflow source (`metadata.workflow_source.root`, `depends_on`) | unit tests on fixture rows; output validates against A3 schemas | ☑ |
 | C6 | Bridge loop: tail with cursor, publish through the EventBus port | a bash-only test workflow's events appear in Firestore | ☐ |
 | C7 | Bridge cursor kept in `engines/{engine}` | kill and restart the bridge: no gaps, no duplicates | ☐ |
 | C8 | Heartbeat event every 60 s | `engines/factory-1.last_heartbeat` advances | ☐ |
