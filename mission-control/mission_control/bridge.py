@@ -77,18 +77,30 @@ class Bridge:
             time.sleep(poll_s)
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    """`--once`: catch up, send one heartbeat, print a summary and exit (setup and checks)."""
+    import sys
+
     from mission_control import config
 
+    argv = sys.argv[1:] if argv is None else argv
     logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     cfg = config.load()
     engine = cfg.adapter("engine")
     name = getattr(engine, "engine", "") or os.uname().nodename.split(".")[0]
-    Bridge(engine, cfg.adapter("bus"), cfg.adapter("store"), name=name,
-           topic=os.environ.get("MC_TOPIC", "factory-events"),
-           heartbeat_s=float(os.environ.get("MC_HEARTBEAT_S", "60"))).run_forever(
-        poll_s=float(os.environ.get("MC_POLL_S", "2")))
+    bridge = Bridge(engine, cfg.adapter("bus"), cfg.adapter("store"), name=name,
+                    topic=os.environ.get("MC_TOPIC", "factory-events"),
+                    heartbeat_s=float(os.environ.get("MC_HEARTBEAT_S", "60")))
+    if "--once" in argv:
+        start = bridge.cursor
+        while bridge.step():
+            pass
+        bridge.beat(force=True)
+        print(f"bridge {name}: cursor {start!r} -> {bridge.cursor!r}, "
+              f"published {bridge.published}, dropped {bridge.dropped}, heartbeat sent")
+        return
+    bridge.run_forever(poll_s=float(os.environ.get("MC_POLL_S", "2")))
 
 
 if __name__ == "__main__":
