@@ -23,7 +23,8 @@ _ADAPTERS: dict[str, dict[str, Factory]] = {port: {} for port in PORTS}
 BUILTIN: dict[str, dict[str, str]] = {
     "bus": {"memory": "mission_control.adapters.bus.memory",
             "pubsub": "mission_control.adapters.bus.pubsub"},
-    "store": {"memory": "mission_control.adapters.store.memory"},
+    "store": {"memory": "mission_control.adapters.store.memory",
+              "firestore": "mission_control.adapters.store.firestore"},
 }
 
 

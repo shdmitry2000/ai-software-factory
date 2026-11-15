@@ -32,7 +32,7 @@ Legend: ☐ to do · ◐ in progress · ☑ done
 |---|---|---|---|
 | B1 | Pub/Sub EventBus adapter: publish with ordering key | contract test passes against a throwaway test topic | ☑ |
 | B2 | Pub/Sub EventBus adapter: pull subscribe + ack | publish → receive round trip test passes | ☑ |
-| B3 | Firestore StateStore adapter: idempotent upsert of `events/{id}` | publishing the same event twice leaves one document | ☐ |
+| B3 | Firestore StateStore adapter: idempotent upsert of `events/{id}` | publishing the same event twice leaves one document | ☑ |
 | B4 | Writer as a local HTTP service: Pub/Sub push body → validate → store | `curl` of an example event creates the document | ☐ |
 | B5 | Writer container image pushed to Artifact Registry | image tag listed in the registry | ☐ |
 | B6 | Writer deployed to Cloud Run, private, as `factory-writer` | `gcloud run services describe` shows it ready | ☐ |

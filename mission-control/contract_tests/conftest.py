@@ -32,6 +32,7 @@ class BusHarness:
 class StoreHarness:
     store: Any
     collection: str
+    close: Callable[[], None] = lambda: None
 
 
 def _memory_bus() -> BusHarness:
@@ -82,10 +83,17 @@ def _pubsub_bus() -> BusHarness:
     return BusHarness(bus, topic, sub, close)
 
 
+def _firestore_store() -> StoreHarness:
+    """A throwaway test_mc_* collection, emptied after the test."""
+    store = registry.get("store", "firestore")(project=GCP_PROJECT)
+    col = f"test_mc_{uuid.uuid4().hex[:8]}"
+    return StoreHarness(store, col, lambda: store.drop_collection(col))
+
+
 # port → [(adapter name, harness factory, skip reason or "")]
 CANDIDATES: dict[str, list[tuple[str, Callable[[], Any], str]]] = {
     "bus": [("memory", _memory_bus, ""), ("pubsub", _pubsub_bus, _LIVE_SKIP)],
-    "store": [("memory", _memory_store, "")],
+    "store": [("memory", _memory_store, ""), ("firestore", _firestore_store, _LIVE_SKIP)],
 }
 
 
@@ -95,8 +103,10 @@ def _params(port: str):
         if not skip:
             try:
                 registry.get(port, name)
-            except (KeyError, ModuleNotFoundError):
+            except KeyError:
                 skip = f"adapter {port}/{name} not written yet"
+            except ImportError as e:
+                skip = f"adapter {port}/{name}: its SDK is not installed ({e.name or e})"
         marks = [pytest.mark.skip(reason=skip)] if skip else []
         out.append(pytest.param(harness, id=f"{port}-{name}", marks=marks))
     return out or [pytest.param(None, id=f"{port}-none", marks=pytest.mark.skip(reason=f"no {port} adapters"))]
@@ -112,5 +122,9 @@ def bus_h(request):
 
 
 @pytest.fixture(params=_params("store"))
-def store_h(request) -> StoreHarness:
-    return request.param()
+def store_h(request):
+    h = request.param()
+    try:
+        yield h
+    finally:
+        h.close()

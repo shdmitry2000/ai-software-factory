@@ -63,6 +63,16 @@ def test_query_where_order_limit(store_h):
     assert {d["status"] for d in s.query(c, where=[("status", "in", ["running", "completed"])])} == {"running", "completed"}
 
 
+def test_neutral_ids_with_slashes_and_hashes(store_h):
+    s, c = store_h.store, store_h.collection
+    wid = "tracker:github/shdmitry2000/file-to-markdown-convertor#14"
+    s.upsert(c, wid, {"stage": "building"})
+    s.merge(c, wid, {"laps": 2})
+    assert s.get(c, wid) == {"stage": "building", "laps": 2}
+    s.delete(c, wid)
+    assert s.get(c, wid) is None
+
+
 def test_delete(store_h):
     s, c = store_h.store, store_h.collection
     s.upsert(c, "a", {"x": 1})
