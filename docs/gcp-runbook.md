@@ -24,7 +24,8 @@ PROJECT=me-sb-dgcp-dpoc-pocyosh-pr ZONE=me-west1-a VM=factory-1 TYPE=e2-standard
 [`bin/gcp/create-factory-vm.sh`](../bin/gcp/create-factory-vm.sh) is idempotent. It:
 
 - creates firewall rule `allow-iap-ssh-factory` (tcp:22 from `35.235.240.0/20`, tag `factory`);
-- creates the VM with `--no-service-account --no-scopes`;
+- creates firewall rule `allow-iap-archon-factory` (tcp:3090, IAP only) for the Archon console;
+- creates the VM with service account `factory-vm` (made by `mission-control/infra/setup.sh`), or attaches it to an existing VM;
 - copies [`bin/bootstrap-ubuntu.sh`](../bin/bootstrap-ubuntu.sh) over and runs it as root:
   git, python3, gh, caddy, bun, uv, Claude Code, Codex.
 
@@ -136,5 +137,5 @@ disk (~$10). Claude tokens will cost more than the VM. With 8 GB keep `parallel`
 
 ```bash
 gcloud compute instances delete factory-1 --project me-sb-dgcp-dpoc-pocyosh-pr --zone me-west1-a
-gcloud compute firewall-rules delete allow-iap-ssh-factory --project me-sb-dgcp-dpoc-pocyosh-pr
+gcloud compute firewall-rules delete allow-iap-ssh-factory allow-iap-archon-factory --project me-sb-dgcp-dpoc-pocyosh-pr
 ```

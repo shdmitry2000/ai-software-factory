@@ -42,8 +42,8 @@ Legend: ☐ to do · ◐ in progress · ☑ done
 
 | # | Step | Done when | |
 |---|---|---|---|
-| C1 | Recreate/attach the VM with service account `factory-vm`; add to `create-factory-vm.sh` | `gcloud pubsub topics publish factory-events` works from the VM | ☐ |
-| C2 | IAP firewall for port 3090 | rule exists; added to the create script | ☐ |
+| C1 | Recreate/attach the VM with service account `factory-vm`; add to `create-factory-vm.sh` | `gcloud pubsub topics publish factory-events` works from the VM | ☑ |
+| C2 | IAP firewall for port 3090 | rule exists; added to the create script | ☑ |
 | C3 | `archon serve` as a systemd service on the VM | Archon console opens on the Mac through `gcloud compute start-iap-tunnel` | ☐ |
 | C4 | Find Archon's DB file and schema on the VM; read-only dump script | the script prints the last 10 events | ☐ |
 | C5 | Archon EngineAdapter: DB rows → CloudEvents (pure function) | unit tests on fixture rows; output validates against A3 schemas | ☐ |

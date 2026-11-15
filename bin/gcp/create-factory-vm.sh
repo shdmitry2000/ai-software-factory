@@ -15,13 +15,29 @@ gcloud compute firewall-rules describe allow-iap-ssh-factory $G >/dev/null 2>&1 
   gcloud compute firewall-rules create allow-iap-ssh-factory $G --network default \
     --direction INGRESS --allow tcp:22 --source-ranges 35.235.240.0/20 --target-tags factory
 
-# No service account: the project has no default compute SA and the VM needs no GCP APIs.
+# Archon's console, reachable only through an IAP tunnel (mission control plan C2).
+gcloud compute firewall-rules describe allow-iap-archon-factory $G >/dev/null 2>&1 ||
+  gcloud compute firewall-rules create allow-iap-archon-factory $G --network default \
+    --direction INGRESS --allow tcp:3090 --source-ranges 35.235.240.0/20 --target-tags factory
+
+# Service account factory-vm (made by mission-control/infra/setup.sh): may publish to
+# factory-events and keep its bridge cursor in Firestore, nothing else. The project has
+# no default compute SA. Scope cloud-platform: IAM roles, not scopes, limit it.
+VM_SA=factory-vm@$PROJECT.iam.gserviceaccount.com
 gcloud compute instances describe $VM $G --zone $ZONE >/dev/null 2>&1 ||
   gcloud compute instances create $VM $G --zone $ZONE --machine-type $TYPE \
     --image-family ubuntu-2404-lts-amd64 --image-project ubuntu-os-cloud \
     --boot-disk-size 100GB --boot-disk-type pd-balanced \
     --tags factory --labels purpose=ai-software-factory \
-    --no-service-account --no-scopes
+    --service-account "$VM_SA" --scopes cloud-platform
+
+# An existing VM created before mission control: attach the account (needs a stop).
+if [ "$(gcloud compute instances describe $VM $G --zone $ZONE --format='value(serviceAccounts[0].email)')" != "$VM_SA" ]; then
+  gcloud compute instances stop $VM $G --zone $ZONE --quiet
+  gcloud compute instances set-service-account $VM $G --zone $ZONE \
+    --service-account "$VM_SA" --scopes cloud-platform
+  gcloud compute instances start $VM $G --zone $ZONE --quiet
+fi
 
 # Wait for sshd.
 for i in $(seq 1 30); do $SSH --command true >/dev/null 2>&1 && break; sleep 10; done
