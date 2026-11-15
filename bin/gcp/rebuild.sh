@@ -13,5 +13,8 @@ gcloud compute scp bin/gcp/setup-app-on-vm.sh "$VM":/tmp/ $F
 gcloud compute ssh "$VM" $F --command 'sudo -i bash /tmp/setup-app-on-vm.sh'
 gcloud compute scp bin/gcp/archon-console.sh "$VM":/tmp/ $F
 gcloud compute ssh "$VM" $F --command 'sudo -i bash /tmp/archon-console.sh' < /dev/null
+# Mission control bridge (resumes from the cursor it saved in Firestore before the sweep).
+gcloud compute scp mission-control/bridge/install-on-vm.sh "$VM":/tmp/ $F
+gcloud compute ssh "$VM" $F --command "sudo -i MC_BRANCH=${MC_BRANCH:-mission-control} bash /tmp/install-on-vm.sh --service" < /dev/null
 bin/gcp/push-logins.sh   # stops here until ~/.factory-secrets holds both tokens
 gcloud compute ssh "$VM" $F --command 'sudo -i bash -lc "cd ~/file-to-markdown-convertor && python3 factory/consumer.py doctor"'
