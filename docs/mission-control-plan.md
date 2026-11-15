@@ -24,7 +24,7 @@ Legend: ☐ to do · ◐ in progress · ☑ done
 | A4 | Python package skeleton `mission_control` with `ports.py` (EventBus, StateStore, WorkTracker, CodeHost, MemoryStore, EngineAdapter, Secrets, Notifier) | `python -c "import mission_control.ports"` works | ☑ |
 | A5 | Contract test suite skeleton, parametrised by adapter | `pytest contract_tests` runs (no adapters yet, all skipped) | ☑ |
 | A6 | In-memory adapters for EventBus and StateStore | their contract tests pass | ☑ |
-| A7 | `mission-control.yaml` loader that picks adapters by name | a test swaps `memory` for `memory2` with no code change | ☐ |
+| A7 | `mission-control.yaml` loader that picks adapters by name | a test swaps `memory` for `memory2` with no code change | ☑ |
 
 ## Stage B — Bus and store (P0)
 

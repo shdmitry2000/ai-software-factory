@@ -1,0 +1,7 @@
+# Which adapter serves each port. Copy to mission-control.yaml.
+# Switching a system (Firestore -> Postgres, GitHub -> Jira, ...) is an edit here.
+ports:
+  bus:
+    adapter: memory        # later: pubsub (project: ${GCP_PROJECT})
+  store:
+    adapter: memory        # later: firestore (project: ${GCP_PROJECT})
