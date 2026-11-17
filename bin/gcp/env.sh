@@ -10,6 +10,7 @@ FACTORY_SECRETS_DIR=${FACTORY_SECRETS_DIR:-$FACTORY_ROOT/.factory-secrets}
 export FACTORY_ROOT FACTORY_SECRETS_DIR
 export CLOUDSDK_CONFIG=$FACTORY_SECRETS_DIR/gcloud
 export DOCKER_CONFIG=$FACTORY_SECRETS_DIR/docker
+export KUBECONFIG=$FACTORY_SECRETS_DIR/home/.kube/config
 # gcloud derives ~/.ssh/google_compute_* from HOME; give it a home inside the folder.
 gcloud() { HOME="$FACTORY_SECRETS_DIR/home" command gcloud "$@"; }
 [ -n "${BASH_VERSION:-}" ] && export -f gcloud

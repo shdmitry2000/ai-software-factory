@@ -17,9 +17,16 @@ REPO=$REGION-docker.pkg.dev/$PROJECT/mission-control/agent
 TAG=$(git -C "$ROOT" rev-parse --short=12 HEAD 2>/dev/null || date +%Y%m%d%H%M)
 
 echo "==> tools"
-if ! command -v kubectl >/dev/null || ! command -v gke-gcloud-auth-plugin >/dev/null; then
+install_kube_tools() {   # gcloud on the VM is a snap without the GKE auth plugin: use Google's apt repo
+  local list=/etc/apt/sources.list.d/google-cloud-sdk.list key=/usr/share/keyrings/cloud.google.gpg
+  if [ ! -f "$list" ]; then
+    curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor --yes -o "$key"
+    echo "deb [signed-by=$key] https://packages.cloud.google.com/apt cloud-sdk main" > "$list"
+  fi
   apt-get update -qq && apt-get install -y -qq kubectl google-cloud-cli-gke-gcloud-auth-plugin >/dev/null
-fi
+}
+[ -x /usr/bin/kubectl ] && [ -x /usr/bin/gke-gcloud-auth-plugin ] || install_kube_tools
+export PATH=/usr/bin:$PATH USE_GKE_GCLOUD_AUTH_PLUGIN=True
 gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet >/dev/null
 
 echo "==> image $REPO:$TAG"

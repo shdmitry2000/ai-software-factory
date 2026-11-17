@@ -215,9 +215,9 @@ agent](mission-control-design.md#gke-agents-and-the-compliance-agent).
 | # | Step | Done when | |
 |---|---|---|---|
 | OB1 | **Owner**: enable the Anthropic models in Vertex AI Model Garden for the project (one-time terms acceptance) | a Haiku 5.5 call from factory-1 with its own service account returns 200; region chosen (`me-west1`, else `eu`/`global`) and recorded | ☐ |
-| OB2 | Cloud Router + Cloud NAT `factory-nat` in me-west1 (in `create-cluster.sh`, idempotent) | a pod/VM without a public IP reaches api.github.com | ☐ |
-| OB3 | Autopilot cluster `factory-agents`: private nodes, DNS endpoint, private IP endpoint, authorized network = factory-1; `factory-vm` gets `roles/container.developer`, nobody else | `kubectl get ns` works on factory-1 and fails from the Mac and from any other VM | ☐ |
-| OB4 | Workload Identity: namespace `agents`, KSA `compliance` → `roles/aiplatform.user` + Pub/Sub publisher on `factory-events` only | a test pod calls Vertex Haiku and publishes one event; no key or secret mounted | ☐ |
+| OB2 | Cloud Router + Cloud NAT `factory-nat` in me-west1 (in `create-cluster.sh`, idempotent) | a pod/VM without a public IP reaches api.github.com | ✅ |
+| OB3 | Autopilot cluster `factory-agents`: private nodes, DNS endpoint, private IP endpoint, authorized network = factory-1; `factory-vm` gets `roles/container.developer`, nobody else | `kubectl get ns` works on factory-1 and fails from the Mac and from any other VM | ✅ |
+| OB4 | Workload Identity: namespace `agents`, KSA `compliance` → `roles/aiplatform.user` + Pub/Sub publisher on `factory-events` only | a test pod calls Vertex Haiku and publishes one event; no key or secret mounted | ◐ |
 | OB5 | Image built on factory-1 and pushed to Artifact Registry `mission-control/agent` by digest | digest listed; Mac never pushes | ☐ |
 | OB6 | Console only through the main node: Archon UI and later dashboards bound to 127.0.0.1; `bin/gcp/console.sh` opens the IAP SSH `-L` tunnel; the old IAP rule for tcp:3090 removed | console opens through the tunnel; direct IAP to 3090 refused | ☐ |
 | OB7 | (owner OK needed) remove factory-1's public IP; egress through Cloud NAT | factory still runs a lap; `gcloud compute ssh --tunnel-through-iap` works | ☐ |
