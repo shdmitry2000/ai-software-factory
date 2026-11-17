@@ -107,6 +107,7 @@ class Change:
     title: str
     state: str                            # open | merged | closed
     head: str                             # head commit sha
+    base: str = ""                        # branch the change targets
     work_item: str = ""                   # neutral work item id it delivers
     checks: dict[str, str] = field(default_factory=dict)  # name → success|failure|pending
     review: str = ""                      # ready | changes_requested | ""
@@ -120,6 +121,9 @@ class CodeHost(Protocol):
     def get_change(self, change_id: str) -> Change | None: ...
 
     def protected_paths(self) -> list[str]: ...
+
+    def diff(self, change_id: str, *, max_bytes: int = 200_000) -> tuple[str, bool]:
+        """Unified diff of the change against its base, and whether it was truncated."""
 
 
 # --------------------------------------------------------------------------- MemoryStore
@@ -147,6 +151,35 @@ class MemoryStore(Protocol):
         """Versions, newest first."""
 
     def search(self, product: str, text: str, *, reader_scope: str = "all", limit: int = 10) -> list[MemoryDoc]: ...
+
+
+# --------------------------------------------------------------------------- PromptRegistry
+
+
+@dataclass(frozen=True)
+class Prompt:
+    name: str                             # e.g. compliance/rules
+    text: str
+    version: str                          # immutable, adapter-specific ("3", a git sha, an MLflow version)
+    hash: str                             # sha256:<hex> of text, the same in every adapter
+    label: str = ""                       # the label it was fetched by, if any
+
+
+@runtime_checkable
+class PromptRegistry(Protocol):
+    def get(self, name: str, *, label: str = "production", version: str = "") -> Prompt | None:
+        """By exact version when given, else by label. None when missing."""
+
+    def put(self, name: str, text: str, *, author: str, note: str = "") -> Prompt:
+        """Store a new immutable version (never overwrites one)."""
+
+    def set_label(self, name: str, label: str, version: str) -> None:
+        """Point a label at an existing version (rollout and rollback)."""
+
+    def versions(self, name: str) -> list[str]:
+        """Versions, newest first."""
+
+    def labels(self, name: str) -> dict[str, str]: ...
 
 
 # --------------------------------------------------------------------------- EngineAdapter
@@ -189,6 +222,7 @@ PORTS: dict[str, type] = {
     "codehost": CodeHost,
     "memory": MemoryStore,
     "engine": EngineAdapter,
+    "prompts": PromptRegistry,
     "secrets": Secrets,
     "notifier": Notifier,
 }
@@ -202,6 +236,6 @@ def is_adapter_for(port: str, obj: object) -> bool:
 
 __all__ = [
     "Change", "CodeHost", "Delivery", "Doc", "EngineAdapter", "Event", "EventBus",
-    "MemoryDoc", "MemoryStore", "Notifier", "PORTS", "Secrets", "StateStore", "WorkItem",
+    "MemoryDoc", "MemoryStore", "Notifier", "PORTS", "Prompt", "PromptRegistry", "Secrets", "StateStore", "WorkItem",
     "WorkTracker", "is_adapter_for",
 ]

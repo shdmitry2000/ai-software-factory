@@ -8,6 +8,35 @@ client; an engine is another; a person with `curl` is a third.
 
 Status: design, 2026-11-17. Build steps: Stage T of [mission-control-plan.md](mission-control-plan.md).
 
+## What exists, and what we use (research 2026-11-17)
+
+Self-hostable in GCP, private by default (code-review rules for a private product), and
+behind our ports so the choice can change.
+
+| Option | Licence, footprint | Versions and labels | Fit |
+|---|---|---|---|
+| **Git repo as registry** | free, nothing to run | commit SHA + content hash = immutable version; tags/branches = labels; PR review = audit | **Start here** (matches PRs-only) |
+| **MLflow Prompt Registry** 3.18 | Apache-2.0; one Cloud Run container + Cloud SQL + GCS | immutable versions, movable aliases, per-prompt permissions | **Next, when a UI for non-engineers is needed** |
+| Langfuse v4 | MIT core; 6 parts (web, worker, Postgres, Redis, ClickHouse, blob store) | versions + free-form labels, UI diff | only if we also want its tracing; audit log and protected labels are Enterprise |
+| Agenta | MIT; Docker stack | versions, environments | possible; free/paid split unclear |
+| Phoenix (Arize) | Elastic License 2.0 (not OSI) | versions + tags | possible, licence caveat |
+| Vertex AI prompt management | GCP-native, IAM | versions only, **no labels/aliases, no diff** | fallback only |
+| LangSmith, Braintrust, PromptLayer, Portkey | SaaS; self-host Enterprise only | yes | no (data leaves the project) |
+| Pezzo | Apache-2.0 | yes | no (stale since 2024) |
+
+**Skills**: no prompt tool stores file bundles, so none is a skill manager. Anthropic's
+Skills API (`/v1/skills`) is not read by Claude Code and stores skills with a third
+party, so it is out. The official versioned route is a **Claude Code plugin
+marketplace** in a private git repo (plugins carry `skills/` and `agents/`; install pins
+`ref`/`sha`). If immutable release artefacts are wanted later, CI publishes each tag to
+an **Artifact Registry generic repository** and the adapter downloads by version.
+Secret Manager is not suitable (64 KiB, opaque, no diff or labels).
+
+**Decision**: PromptRegistry and SkillRegistry ports; first adapters are **git** (a
+`prompts/` tree and a plugin-marketplace layout); **MLflow** is the first service
+adapter when a UI is needed. The compliance agent's rules are the first prompt: they
+start **empty** and every report records the rules version it used.
+
 ## Goals
 
 1. **Every prompt and skill has versions**, immutable once created, with who, when, why.

@@ -3,6 +3,8 @@
     runs/{run}              one per run: workflow, engine, status, times, failure, graph
     nodes/{run}:{node}      one per node of a run: status, times, agent, sandbox, attempts
     engines/{engine}        one per engine: last heartbeat, slots, halted/paused, pin
+    agents/{agent_id}       one per agent instance (VM, pod, laptop): last heartbeat and state
+    compliance/{product}__{pr}  the latest advisory compliance report of a PR
 
 Every rule is order-independent and idempotent, because the bus delivers late and twice:
 - a terminal status always beats a non-terminal one; among non-terminal statuses the event
@@ -19,6 +21,9 @@ from typing import Any
 from mission_control.ports import Event, StateStore
 
 RUNS, NODES, ENGINES = "runs", "nodes", "engines"
+AGENTS, COMPLIANCE = "agents", "compliance"
+REPORT_FIELDS = ("product", "pr", "change", "head", "base", "title", "mode", "status", "rules",
+                 "findings", "model", "effort", "cost_usd", "diff_truncated", "error")
 TERMINAL_RUN = {"completed", "failed", "cancelled", "abandoned", "lost"}
 TERMINAL_NODE = {"completed", "failed", "skipped", "reused"}
 
@@ -116,6 +121,28 @@ def _apply_engine(doc: dict | None, ev: Event) -> dict:
     return d
 
 
+def _apply_agent(doc: dict | None, ev: Event) -> dict:
+    d, t, data = dict(doc or {}), ev["time"], ev.get("data", {})
+    if t >= (d.get("last_heartbeat") or ""):
+        d.update({k: v for k, v in data.items()})
+        d["last_heartbeat"] = t
+    return d
+
+
+def _apply_report(doc: dict | None, ev: Event) -> dict:
+    """The latest report wins (by time, then id), whatever order reports arrive in."""
+    d = dict(doc or {})
+    if (ev["time"], ev["id"]) >= (d.get("reported_at", ""), d.get("report_id", "")):
+        data = ev.get("data", {})
+        d = {k: data[k] for k in REPORT_FIELDS if k in data}
+        d.update(reported_at=ev["time"], report_id=ev["id"], agent=ev.get("factoryengine", ""))
+    return d
+
+
+def compliance_key(product: str, pr: int) -> str:
+    return f"{product}__{pr}"
+
+
 def project(ev: Event, store: StateStore) -> list[str]:
     """Apply one event to the projections; returns the documents touched (collection/id)."""
     kind = str(ev.get("type", "")).removeprefix("dev.factory.")
@@ -135,4 +162,17 @@ def project(ev: Event, store: StateStore) -> list[str]:
     if kind == "engine.heartbeat" and ev.get("factoryengine"):
         store.update(ENGINES, ev["factoryengine"], lambda doc: _apply_engine(doc, ev))
         return [f"{ENGINES}/{ev['factoryengine']}"]
+    if kind == "agent.heartbeat":
+        aid = (ev.get("data") or {}).get("agent_id")
+        if not aid:
+            return []
+        store.update(AGENTS, aid, lambda doc: _apply_agent(doc, ev))
+        return [f"{AGENTS}/{aid}"]
+    if kind == "compliance.reported":
+        data = ev.get("data") or {}
+        if not (data.get("product") and data.get("pr")):
+            return []
+        key = compliance_key(data["product"], data["pr"])
+        store.update(COMPLIANCE, key, lambda doc: _apply_report(doc, ev))
+        return [f"{COMPLIANCE}/{key}"]
     return []

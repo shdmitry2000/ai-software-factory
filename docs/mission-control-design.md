@@ -371,10 +371,12 @@ Product repos change **only through pull requests**. Nothing pushes to a shared 
 not a builder, not the holdout writer, not mission control, not a person through the
 factory. Other teams work on the same code.
 
-- **Base branch is per-product configuration**, not a convention. Which branch PRs
-  target (`develop` or `main`) is **undecided**; each product's entry in
-  `products/<product>.yaml` names it (`base_branch`), and until the owner decides it
-  stays what the repo uses today. Nothing in mission control assumes a name.
+- **Base branch is per-product configuration**, not a convention. Owner's decision
+  (2026-11-17): **`main`** for now, kept as a setting that can be changed from the
+  console. `products/<product>.yaml` seeds it (`base_branch: main`); the console
+  changes it with a `dev.factory.product.updated` command event, so every change has
+  who and when, and the `products` projection holds the current value. Nothing in
+  mission control assumes a name.
 - **Where the pinned engine disagrees.** Archon's shared workflows say "default
   branch": builders branch from it, the manager tests it, and the `holdout-writer`
   brief commits scenarios to it and **pushes** (that is how `d58edec` reached the
@@ -389,9 +391,26 @@ factory. Other teams work on the same code.
   - if the owner picks a base branch other than the repo's GitHub default, either the
     default is changed (owner's call) or the gap is raised upstream with Archon; until
     then the factory's builders follow the repo default.
-- **The factory needs its own identity** (GitHub App preferred, or a machine user) so
-  branch protection, audit and comments tell it apart from a person. Today it uses the
-  owner's token. Open decision.
+- **The factory needs its own identity** so branch protection, audit and comments
+  tell it apart from a person. Today it uses the owner's token. Options:
+
+  | | Owner's token (today) | Machine user | **GitHub App** (recommended) |
+  |---|---|---|---|
+  | Who GitHub shows | the owner | `factory-bot` (a second account) | `factory-compliance[bot]` |
+  | Credential | long-lived PAT | long-lived PAT or SSH key per account | private key → **1-hour** installation tokens |
+  | Scope | everything the owner can do | what it is invited to | exact permissions, chosen repos |
+  | Per-agent least privilege | no | one account per role (seats, ToS limits) | one App per role, free |
+  | Advisory signal | comment | comment | **neutral Check Run** (only Apps can create them) and comment |
+  | Branch protection | owner may be an admin who bypasses | normal collaborator | listed or excluded explicitly |
+
+  Recommendation: **two GitHub Apps** owned by the owner's account: `factory-builder`
+  (contents + pull requests write, on product repos; never admin) and
+  `factory-compliance` (pull requests + contents **read**, checks + issues **write** for
+  a neutral check and one comment). Each App's private key lives only on the main node
+  (Secret Manager, read by `factory-vm`); the main node mints 1-hour, repo-scoped
+  installation tokens and hands them to an agent per job. No GitHub secret is ever
+  stored in a pod. Until the Apps exist, the compliance agent reads the public
+  converter repo **unauthenticated** and writes nothing to GitHub.
 
 ## Projects and agents status
 
@@ -462,26 +481,83 @@ effort and the cheapest model tier**, with a daily spend cap. Changing to enforc
 mode is a later, explicit owner decision (it would then post a required check that
 `required_checks` lists, so the land gate refuses until it is green).
 
-- **Image**: one agent image (pinned Archon + Claude Code + `gh` + the bridge), built
-  in CI and pushed to Artifact Registry. The same image can serve as a builder engine
-  later.
-- **Workflow**: a project-level Archon workflow kept in the factory repo
-  (`agents/compliance/`), not a fork of the pinned pack: `select` (script: next PR head
-  not yet reviewed) → `diff` (script) → `review` (agent: small tier, low effort, rules
-  from `agents/compliance/rules.md`, later from the PromptRegistry) → `report`
-  (script: CloudEvent `dev.factory.compliance.reported` with findings, severity, rule
-  ids, the reviewed head SHA). Running inside Archon means the existing bridge carries
-  its events to the console unchanged.
+**Empty rules cost nothing.** The rule set starts empty (owner's decision). With no
+rules the agent still polls, records each PR head as reviewed against rules version
+`empty@<hash>`, and publishes a report with `status: no_rules`, **without calling a
+model**. The first rule added in the prompt manager turns on model reviews for the next
+head; earlier reports keep the version they used.
+
+- **Agent**: a small Python process (`agents/compliance/`), not an Archon workflow. One
+  review per PR head is a single model call; Archon would add a checkout and a bridge to
+  every pod for nothing. The agent publishes its own CloudEvents through the EventBus
+  port: `dev.factory.compliance.reported` (findings, severity, rule ids, reviewed head
+  SHA, rules version, cost) and `dev.factory.agent.heartbeat`. Loop: list open PRs of
+  each assigned product → skip heads already reported → fetch the diff → load rules
+  from the **PromptRegistry** (label `production`) → review (`claude -p`, Haiku tier,
+  low effort, read-only tools) → publish.
 - **Where reports go**: Firestore `compliance/{product}__{pr}` (projection) and the
-  console's Projects view. Posting an advisory PR comment (one comment, edited in
-  place, clearly marked advisory) waits for the factory's own GitHub identity.
-- **Cluster**: GKE Autopilot `factory-agents` in me-west1, created by an idempotent
-  `bin/gke/create-cluster.sh`, called from `rebuild.sh`. Pods use Workload Identity
-  (service account `factory-agent`: Pub/Sub publisher on `factory-events` only); no
-  key files. The coding-agent credential reaches the pod as a Kubernetes Secret created
-  by the deploy script from `.factory-secrets/` over stdin (later Secret Manager).
-- **Sandbox**: the pod is the sandbox. The compliance agent only reads diffs; it gets a
-  read-only GitHub token and no write access to any repo.
+  console's Projects view. A neutral Check Run and one comment edited in place come with
+  the `factory-compliance` GitHub App (see Git rules).
+- **Sandbox**: the pod is the sandbox. It reads diffs over the GitHub API; there is no
+  checkout, no write token and no shell tool for the model.
+
+### Security: everything through the main node
+
+Owner's rule (2026-11-17): the cluster and its agents are reachable and controllable
+**only from the main node (factory-1)**, the console is used **only through the main
+node**, and no Claude credential sits in a pod.
+
+```
+ operator laptop ──IAP (SSH -L, Google login + IAM)──► factory-1 (main node)
+                                                         │  console on 127.0.0.1
+                                                         │  kubectl (only identity allowed)
+                                                         ▼
+                              GKE Autopilot "factory-agents" (private nodes,
+                              control plane: DNS endpoint gated by IAM + internal IP
+                              with authorized network = factory-1 only)
+                                │ Workload Identity (no keys)
+                 ┌──────────────┼──────────────────────┐
+                 ▼              ▼                      ▼
+     Vertex AI (Claude)   Pub/Sub factory-events   GitHub API (Cloud NAT,
+     roles/aiplatform.user  publisher only          later FQDN policy: github only)
+```
+
+1. **Claude on Vertex AI with Workload Identity.** The pod's Kubernetes service
+   account is bound to `roles/aiplatform.user`; Claude Code runs with
+   `CLAUDE_CODE_USE_VERTEX=1` and gets short-lived Google tokens from the metadata
+   server. **No Claude secret exists anywhere.** This is also the clean fit for
+   Anthropic's terms: a subscription token (`claude setup-token`) is meant for one
+   person's ordinary use, while unattended fleets belong on commercial access (Vertex,
+   an API key, or Anthropic's own workload-identity federation). The subscription
+   token stays for the owner's interactive work on factory-1 only.
+   - Checked live 2026-11-17: Claude models (Haiku 5.5, Sonnet 5.5, Opus 5.5…) are
+     listed in Model Garden, but calls return "project does not have access": the
+     owner must **enable the Anthropic models once in the Model Garden console**
+     (accepting the publisher's terms). The `vertexai.allowedModels` policy allows all.
+   - Region: try `me-west1` first; else `CLOUD_ML_REGION=global` (data location not
+     guaranteed) or `eu`. Recorded per pool.
+2. **Private cluster.** Autopilot, private nodes, control plane with the **DNS-based
+   endpoint** (IAM-gated) and the IP endpoint private, authorized network = factory-1's
+   internal address. Only `factory-vm` (the main node's service account) is granted
+   `container.clusters.connect` (Kubernetes Engine Developer). The Mac never runs
+   kubectl against it; it creates the cluster through the Google API and everything
+   inside runs from factory-1.
+3. **Egress.** Cloud NAT for pods (GitHub). Google APIs go over Private Google Access.
+   Later: an FQDN network policy allowing only `github.com`/`api.github.com` (Autopilot
+   enables it by cluster update).
+4. **Console only through the main node.** Dashboards and Archon's UI bind to
+   `127.0.0.1` on factory-1; the operator opens them with
+   `gcloud compute ssh factory-1 --tunnel-through-iap -- -L 8080:localhost:<port>`
+   (IAP needs the 35.235.240.0/20 → tcp:22 rule and `iap.tunnelResourceAccessor`).
+   factory-1 then needs **no public IP** (egress through the same Cloud NAT); removing
+   it is a separate step with the owner's OK.
+5. **GitHub.** App private keys only on the main node; per-job 1-hour tokens to pods
+   (see Git rules).
+6. **Org policy, checked live 2026-11-17** in the sandbox: external IPs, service
+   account keys, locations, load balancers, Cloud NAT, Vertex models are all allowed;
+   OS Login is enforced; Workload Identity and private nodes are allowed, not forced.
+   The sandbox sweep deletes GKE clusters, firewall rules and VMs every weekend, so the
+   cluster, NAT and rules are created by `bin/gke/create-cluster.sh` from `rebuild.sh`.
 
 ## Workflow browser and agent messages
 
@@ -556,10 +632,11 @@ control is a client: the console shows which prompt and skill versions each run 
   topics in the project have survived past sweeps; the rest is checked in P0.
 - The upstream factory's `DECISIONS.md` mentions a "mission-control dashboard". Ask
   upstream whether one exists before P1 to avoid building it twice.
-- **Base branch** for product PRs (`develop` or `main`): owner's decision, open.
-- **Factory GitHub identity** (GitHub App or machine user): owner's decision, open.
-- **Compliance rules**: which ones apply (dependency licences, secrets, personal data,
-  protected paths, bank policy). Owner's input needed before the agent reviews anything.
+- ~~Base branch~~: decided 2026-11-17, `main`, changeable per product from the console.
+- **Factory GitHub identity**: options laid out under Git rules (two GitHub Apps
+  recommended); owner's decision, open.
+- ~~Compliance rules~~: decided 2026-11-17, start **empty**; the owner adds and changes
+  rules in the prompt manager, with versions.
 - **Agent messages, unverified details** (only one AI run inspected so far):
   whether a subagent's own tool calls are attributed to it (`tool_call` rows carry no
   `parentToolCallId`; `subtask` rows carry `lastToolName` only); whether
@@ -570,11 +647,11 @@ control is a client: the console shows which prompt and skill versions each run 
 - **Project-level workflows**: does the pinned Archon load workflows from a directory
   outside the product repo (Archon home or a configured path)? Needed for the compliance
   workflow without committing it to the product repo.
-- **Subscription token in pods**: whether running the owner's subscription token in
-  unattended pods is acceptable for usage limits and terms, or the compliance agent
-  should use an API key or Vertex AI identity (AgentAuth already allows all three).
-- **GKE in the sandbox**: Autopilot quota in me-west1, and whether org policy allows
-  Workload Identity bindings there.
+- ~~Subscription token in pods~~: decided, no. Pods use Claude on Vertex AI through
+  Workload Identity (see Security). Waiting on the owner to enable the Anthropic models
+  in Model Garden.
+- **GKE in the sandbox**: org policy allows it (checked); Autopilot quota in me-west1
+  is checked when the cluster is first created.
 - **Public endpoints**: whether org policy allows an unauthenticated Cloud Run service
   (needed for GitHub webhooks); polling avoids the question.
 

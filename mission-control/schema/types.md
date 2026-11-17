@@ -50,6 +50,13 @@ new version (`…v2`), never an edit.
 | `dev.factory.engine.unhalted` | `engine/{engine}` | launches allowed | `consumer.py unhalt` |
 | `dev.factory.engine.auth_changed` | `engine/{engine}` | sign-in method added, removed, failed a test call (never the secret) | AgentAuth (P3) |
 
+## Agents (any runtime) and compliance
+
+| Type | Subject | Meaning | Source |
+|---|---|---|---|
+| `dev.factory.agent.heartbeat` | `agent/{agent_id}` | an agent instance is alive: pool, kind, location, state, model, auth method (never the secret), spend today | the agent, every 60 s |
+| `dev.factory.compliance.reported` | `change/{change id}` | an advisory compliance review of one PR head against one rules version | compliance agent |
+
 ## Factory decisions (factory files)
 
 | Type | Subject | Meaning | Source today |

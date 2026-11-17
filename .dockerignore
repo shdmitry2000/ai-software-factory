@@ -1,0 +1,10 @@
+# Agent image build context = repo root; send only what the Dockerfile copies.
+**
+!agents/
+!products/
+!prompts/
+!mission-control/pyproject.toml
+!mission-control/mission_control/
+!mission-control/schema/
+**/__pycache__
+**/test_*.py

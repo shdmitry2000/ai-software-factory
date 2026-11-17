@@ -181,32 +181,60 @@ On hold by the owner (2026-11-17): converter PR #3 waits until the factory is pr
 
 | # | Step | Done when | |
 |---|---|---|---|
-| N1 | `products/<product>.yaml`: repo, `base_branch` (undecided: the repo's current default until the owner picks), pools, compliance mode; loader + schema | a test loads the converter's file; a missing `base_branch` is an error | ☐ |
+| N1 | `products/<product>.yaml`: repo, `base_branch: main` (owner, 2026-11-17), pools, compliance mode; loader + schema. Console edits arrive as `dev.factory.product.updated` and override the file in the `products` projection (UI part in Q6) | a test loads the converter's file; a missing `base_branch` is an error | ☐ |
 | N2 | Holdouts outside the repo: run `archon-holdouts` with `holdout=<path outside the checkout>` on a test product | the writer reports scenario ids, `git log --all` on the remote shows no new commit | ☐ |
 | N3 | Holdouts backed up to a private bucket (BlobStore port, GCS adapter, contract tests) and restored by `rebuild.sh` | delete the engine copy, rebuild: the file is back, byte-identical | ☐ |
 | N4 | Git-rules check (read-only): base branch requires a PR, direct pushes blocked, who can bypass | report printed per product; a repo without protection opens a problem | ☐ |
-| N5 | Decide with the owner: base branch per product; the factory's own GitHub identity (App or machine user) | decisions recorded in `products/*.yaml` and the design's open questions | ☐ |
+| N5 | Decide with the owner: base branch (**done: `main`**, a console setting); the factory's own GitHub identity (options in the design's Git rules; two GitHub Apps recommended) | identity decision recorded in the design | ◐ |
 | N6 | Bridge redaction for holdout agents: metadata only (no `rawInput`, `output`, `summary`, `text`) | unit test with a synthetic holdout run: no scenario text in any published event | ☐ |
 
 ## Stage O — Compliance agent on GKE, advisory (owner's near-term goal)
 
-Assumption: "zero effort" = running but **advisory only** (never blocks a merge), lowest
-reasoning effort, cheapest model tier, daily spend cap.
+Decisions (2026-11-17): **advisory only** (never blocks a merge); rules start **empty**
+and are edited in the prompt manager with versions; while empty the agent reports
+`no_rules` **without any model call** (zero cost); Claude comes from **Vertex AI through
+Workload Identity** (no Claude secret anywhere); the cluster and console are reachable
+**only through the main node**. Design: [GKE agents and the compliance
+agent](mission-control-design.md#gke-agents-and-the-compliance-agent).
+
+### O-A Skeleton: runs locally, no cloud, no spend
 
 | # | Step | Done when | |
 |---|---|---|---|
-| O1 | Agent image: pinned Archon + Claude Code + `gh` + bridge; built and pushed to Artifact Registry | `docker run <image> archon --version` and `claude --version` succeed; digest listed | ☐ |
-| O2 | Check: can the pinned Archon run a workflow kept outside the product repo? | yes/no with evidence recorded in the design's open questions | ☐ |
-| O3 | Compliance rules with the owner: `agents/compliance/rules.md` (ids, severity, examples) | owner reviewed the list | ☐ |
-| O4 | Compliance workflow `agents/compliance/`: select PR → diff → review (small tier, low effort) → report; run on factory-1 against a test PR, report only to stdout | report JSON names rules and the reviewed head SHA; nothing written to GitHub | ☐ |
-| O5 | Event type `dev.factory.compliance.reported` (schema + example) and `compliance/{product}__{pr}` projection | the O4 report appears in Firestore | ☐ |
-| O6 | `bin/gke/create-cluster.sh`: Autopilot `factory-agents`, Workload Identity → `factory-agent` (publisher only); idempotent | cluster created from nothing; a test pod publishes one event | ☐ |
-| O7 | Credential to the pod: Kubernetes Secret from `.factory-secrets/` over stdin (AgentAuth method recorded, never the secret) | the pod's `claude -p` test call succeeds; the secret is absent from manifests and logs | ☐ |
-| O8 | Deploy `compliance-agent` (1 replica) for the converter, polling open PRs every 10 min | a new PR commit gets a report within 10 minutes; pod restart loses nothing | ☐ |
-| O9 | Spend cap and effort: per-report cost in the event; daily cap stops the agent and opens a problem | a forced low cap stops it and the problem shows | ☐ |
-| O10 | Agent heartbeat `dev.factory.agent.heartbeat` with location `gke:…` | its heartbeat is in Firestore every 60 s | ☐ |
-| O11 | `rebuild.sh` recreates the cluster and redeploys the agent | weekend drill: agent back and reporting, no duplicate reports for already-reviewed heads | ☐ |
-| O12 | Advisory PR comment (one comment, edited in place, marked advisory) — after N5's identity decision | comment appears on a test PR; merge is unaffected | ☐ |
+| OA1 | `products/file-to-markdown-convertor.yaml` + loader (`mission_control/products.py`): repo, `base_branch: main`, `compliance: {mode: advisory, rules: compliance/rules, label: production}` | test loads it; missing `base_branch` or unknown mode is an error | ✅ |
+| OA2 | PromptRegistry port + **file adapter** (`prompts/<name>/0001.md` numbered immutable versions, `labels.yaml` per prompt; hash = content sha256) + contract tests; `prompts/compliance/rules.md` with an **empty** rule set | contract tests pass; `get("compliance/rules","production")` returns zero rules and a version | ✅ |
+| OA3 | Event types `dev.factory.compliance.reported`, `dev.factory.agent.heartbeat` (types.md, data schemas, examples) | `schema/validate.py` passes with the new examples | ✅ |
+| OA4 | Projections `compliance/{product}__{pr}` and `agents/{agent_id}` | projection tests: a report and a heartbeat land; an older report never overwrites a newer head | ✅ |
+| OA5 | PullRequests source (read-only): GitHub REST adapter (unauthenticated for public repos, token-ready) + fake | unit tests on the fake; a live list of the converter's open PRs from the Mac | ✅ |
+| OA6 | Agent core `agents/compliance/agent.py`: poll → skip reported heads → diff → rules → review → report; empty rules ⇒ `no_rules`, no model call; Reviewer port with `claude -p` adapter (Haiku tier, low effort, no tools) and a fake | unit tests: empty rules make zero reviewer calls; with a planted rule the fake reviewer's findings are reported with the rules version | ✅ |
+| OA7 | Dry run on the Mac: `python -m agents.compliance --once --bus memory` against the live converter | one `no_rules` report per open PR printed; nothing written anywhere | ✅ |
+| OA8 | Agent image `agents/image/Dockerfile` (Python + Node + pinned Claude Code), k8s manifests `bin/gke/k8s/`, scripts `bin/gke/create-cluster.sh`, `bin/gke/deploy.sh` (written, not run) | `docker build` succeeds locally; `kubectl apply --dry-run=client` passes | ✅ |
+
+### O-B Secure ground in the sandbox (main-node-only)
+
+| # | Step | Done when | |
+|---|---|---|---|
+| OB1 | **Owner**: enable the Anthropic models in Vertex AI Model Garden for the project (one-time terms acceptance) | a Haiku 5.5 call from factory-1 with its own service account returns 200; region chosen (`me-west1`, else `eu`/`global`) and recorded | ☐ |
+| OB2 | Cloud Router + Cloud NAT `factory-nat` in me-west1 (in `create-cluster.sh`, idempotent) | a pod/VM without a public IP reaches api.github.com | ☐ |
+| OB3 | Autopilot cluster `factory-agents`: private nodes, DNS endpoint, private IP endpoint, authorized network = factory-1; `factory-vm` gets `roles/container.developer`, nobody else | `kubectl get ns` works on factory-1 and fails from the Mac and from any other VM | ☐ |
+| OB4 | Workload Identity: namespace `agents`, KSA `compliance` → `roles/aiplatform.user` + Pub/Sub publisher on `factory-events` only | a test pod calls Vertex Haiku and publishes one event; no key or secret mounted | ☐ |
+| OB5 | Image built on factory-1 and pushed to Artifact Registry `mission-control/agent` by digest | digest listed; Mac never pushes | ☐ |
+| OB6 | Console only through the main node: Archon UI and later dashboards bound to 127.0.0.1; `bin/gcp/console.sh` opens the IAP SSH `-L` tunnel; the old IAP rule for tcp:3090 removed | console opens through the tunnel; direct IAP to 3090 refused | ☐ |
+| OB7 | (owner OK needed) remove factory-1's public IP; egress through Cloud NAT | factory still runs a lap; `gcloud compute ssh --tunnel-through-iap` works | ☐ |
+
+### O-C Run it
+
+| # | Step | Done when | |
+|---|---|---|---|
+| OC1 | Deploy `compliance-agent` (1 replica, `agents` namespace) from factory-1 with `bin/gke/deploy.sh` | pod Running; heartbeat in Firestore `agents/` every 60 s | ☐ |
+| OC2 | Reports for the converter, empty rules | each open PR head gets a `no_rules` report in `compliance/` within 10 min; zero Vertex calls in the logs | ☐ |
+| OC3 | State survives restarts: reviewed heads read back from the store, not memory | delete the pod: no duplicate reports | ☐ |
+| OC4 | Spend cap: per-report cost in the event; daily cap (default $1) stops reviews and opens a problem | a forced cap of $0 stops reviews and the problem shows | ☐ |
+| OC5 | First rule: owner adds one rule (PR to `prompts/compliance/rules.md`, label `production` moved) | the next head is reviewed by Haiku; report names the rule id and the new rules version; old reports unchanged | ☐ |
+| OC6 | `rebuild.sh` recreates NAT, cluster, bindings, deploys the agent | weekend drill: agent back and reporting, no duplicates | ☐ |
+| OC7 | FQDN egress policy: only GitHub (and Google APIs privately) | a pod `curl https://example.com` fails; GitHub works | ☐ |
+| OC8 | After the GitHub App decision: `factory-compliance` App; main node mints 1-hour tokens; neutral Check Run + one comment edited in place | a test PR shows the advisory check; merge unaffected | ☐ |
+| OC9 | Rules move into the prompt manager service (Stage T, MLflow adapter) | a label move changes the next report's rules version only | ☐ |
 
 ## Stage Q — Projects and agents status (on the F dashboard)
 
@@ -263,8 +291,8 @@ Design: [prompt-skill-manager-design.md](prompt-skill-manager-design.md).
 |---|---|---|---|
 | T1 | OpenAPI spec + CloudEvents types + PromptRegistry / SkillRegistry ports | spec lints; ports importable | ☐ |
 | T2 | Contract tests + in-memory adapters (versions immutable, labels per environment, locks) | contract tests pass | ☐ |
-| T3 | Git-repo adapters (prompts as files, skills as folders, labels file) | same contract tests pass on a test repo | ☐ |
-| T4 | Service on Cloud Run with Firestore + Cloud Storage, OIDC for people, engine tokens | contract tests pass against the deployed service | ☐ |
+| T3 | Git-repo adapters (prompts as numbered files + labels file — first one done in OA2; skills as a Claude Code plugin marketplace pinned by sha) | same contract tests pass on a test repo | ◐ |
+| T4 | Prompt service: **MLflow Prompt Registry** self-hosted (Cloud Run + Cloud SQL + GCS, behind IAP, reached through the main node) and its PromptRegistry adapter (versions + aliases = our versions + labels) | contract tests pass against the deployed service | ☐ |
 | T5 | Locks: `POST /v1/locks`, fetch by hash, `dev.prompts.lock.pinned` | two laps with the same lock fetch identical bytes | ☐ |
 | T6 | Lap materializer: skills and subagents into a lap-scoped `CLAUDE_CONFIG_DIR`; check the repo's `.claude/` hook still runs | a lap uses a managed skill; the holdout fence still refuses; repo stays clean | ☐ |
 | T7 | Move the compliance agent's prompt and rules into the manager | a label move changes the next report's prompt version, not the current one | ☐ |

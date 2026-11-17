@@ -1,0 +1,75 @@
+# Compliance agent on GKE. Applied from the main node by bin/gke/deploy.sh, which fills
+# ${IMAGE}, ${PROJECT}, ${VERTEX_REGION}. No Secret: Vertex AI, Pub/Sub and Firestore are
+# reached through Workload Identity (KSA agents/compliance, bound by create-cluster.sh).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agents
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: compliance
+  namespace: agents
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: compliance-agent
+  namespace: agents
+  labels: {app: compliance-agent, factory.dev/pool: compliance}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}          # one reviewer per product at a time
+  selector:
+    matchLabels: {app: compliance-agent}
+  template:
+    metadata:
+      labels: {app: compliance-agent, factory.dev/pool: compliance}
+    spec:
+      serviceAccountName: compliance
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: agent
+          image: ${IMAGE}
+          args: ["--bus", "pubsub", "--store", "firestore", "--interval", "600"]
+          env:
+            - {name: AGENT_ID, valueFrom: {fieldRef: {fieldPath: metadata.name}}}
+            - {name: AGENT_LOCATION, value: "gke:factory-agents/$(AGENT_ID)"}
+            - {name: AGENT_VERSION, value: "${IMAGE}"}
+            - {name: GCP_PROJECT, value: "${PROJECT}"}
+            - {name: MC_TOPIC, value: factory-events}
+            - {name: FACTORY_PRODUCT, value: file-to-markdown-convertor}
+            - {name: COMPLIANCE_MODEL, value: claude-haiku-5-5}
+            - {name: CLAUDE_CODE_USE_VERTEX, value: "1"}
+            - {name: CLOUD_ML_REGION, value: "${VERTEX_REGION}"}
+            - {name: ANTHROPIC_VERTEX_PROJECT_ID, value: "${PROJECT}"}
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+            limits: {cpu: 500m, memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: home, mountPath: /home/agent}
+            - {name: tmp, mountPath: /tmp}
+            - {name: rules, mountPath: /app/prompts/compliance/rules, readOnly: true}
+      volumes:
+        - {name: home, emptyDir: {}}
+        - {name: tmp, emptyDir: {}}
+        - {name: rules, configMap: {name: compliance-rules}}
+---
+# Nothing may connect to the agent; it only calls out.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-ingress
+  namespace: agents
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
