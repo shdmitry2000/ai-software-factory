@@ -72,7 +72,7 @@ to the IAP range only. `rebuild.sh` does this step too.
 
 ## 3. The two logins
 
-With the tokens saved on the Mac ([one-time setup](#one-time-keep-the-tokens-on-the-mac)),
+After signing in once ([`bin/login.sh`](#one-time-sign-in-credentials-stay-in-this-folder)),
 this is one command: `bin/gcp/push-logins.sh`. Interactive alternative — SSH in, then `sudo -i`:
 
 ```bash
@@ -129,7 +129,7 @@ on a weekly cycle:
 
 - **Nothing lives only on the VM.** The app repo holds its committed factory files
   (`MISSION.md`, `harness/`, `.factory/`), Firestore holds history and the bridge cursor,
-  and the Mac holds the two tokens.
+  and `.factory-secrets/` in this repo folder holds the two logins.
 - **Friday before 21:00 UTC:** `python3 factory/consumer.py halt` on the VM, so no lap is cut
   off mid-run. Open PRs survive on GitHub; the next lap picks them up.
 - **Sunday after ~01:00 UTC, or Monday:** one command re-enables the APIs, re-applies the
@@ -141,18 +141,25 @@ on a weekly cycle:
 
   Then `unhalt`, and reinstall the timer if scheduling was on (`schedule install --apply`).
 
-### One-time: keep the tokens on the Mac
+### One-time: sign in (credentials stay in this folder)
 
 ```bash
-mkdir -m 700 -p ~/.factory-secrets
-claude setup-token                 # paste the token into the next file
-(umask 077; cat > ~/.factory-secrets/claude_token)
-# GitHub token with repo + workflow scope (fine-grained: just the app repo)
-(umask 077; cat > ~/.factory-secrets/gh_token)
+bin/login.sh            # asks only for what is missing; --check reports, --redo starts over
 ```
 
-[`bin/gcp/push-logins.sh`](../bin/gcp/push-logins.sh) sends them to the VM over stdin
-(never on a command line) and is what step 3 runs in `rebuild.sh`.
+[`bin/login.sh`](../bin/login.sh) asks how to sign in and keeps everything in
+`.factory-secrets/` **inside this repo folder** (mode 700, files 600), nothing in `$HOME`:
+
+| Login | Options |
+|---|---|
+| GitHub | browser sign-in (`gh auth login --web`, with `GH_CONFIG_DIR` inside the folder), or paste a fine-grained token for the app repo |
+| Coding agent | Claude subscription sign-in (`claude setup-token`, `CLAUDE_CONFIG_DIR` inside the folder), paste an existing setup-token, or paste an Anthropic API key |
+
+It checks each credential (GitHub with `gh api user`, Claude by format), refuses a folder
+outside the repo or one git does not ignore, and reads tokens with `read -s`. The folder is in
+`.gitignore`, and `.claude/settings.json` denies agents reading or editing it.
+[`bin/gcp/push-logins.sh`](../bin/gcp/push-logins.sh) sends the credentials to the VM over
+stdin (never on a command line) and is what step 3 runs in `rebuild.sh`.
 
 ## Cost
 

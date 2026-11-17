@@ -66,7 +66,7 @@ Legend: ☐ to do · ◐ in progress · ☑ done
 
 | # | Step | Done when | |
 |---|---|---|---|
-| E1 | Tokens in `~/.factory-secrets`; `push-logins.sh` | `gh auth status` and `claude --version` work as root on the VM | ☐ |
+| E1 | `bin/login.sh` (credentials in the repo's `.factory-secrets/`); `push-logins.sh` | `gh auth status` and `claude --version` work as root on the VM | ☐ |
 | E2 | Write `MISSION.md`, journeys, `harness.config.json` with you | your review done | ☐ |
 | E3 | `holdout-writer` writes `HOLDOUT.md`; you review it | file reviewed; fence check in `doctor` passes | ☐ |
 | E4 | Commit and push the factory files (PR) | merged | ☐ |

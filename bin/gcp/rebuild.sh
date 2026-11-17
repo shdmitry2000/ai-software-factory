@@ -2,7 +2,7 @@
 # Rebuild the whole factory server after the weekend sandbox cleaner deleted it.
 #   bin/gcp/rebuild.sh            (from the factory repo root, on the Mac)
 # Everything the factory needs between rebuilds lives in GitHub (app repo with its
-# committed factory files) and in ~/.factory-secrets on the Mac.
+# committed factory files) and in .factory-secrets/ in this folder (bin/login.sh).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 export PROJECT=${PROJECT:-me-sb-dgcp-dpoc-pocyosh-pr} ZONE=${ZONE:-me-west1-a} VM=${VM:-factory-1}
@@ -21,5 +21,6 @@ gcloud compute ssh "$VM" $F --command 'sudo -i bash /tmp/archon-console.sh' < /d
 # Mission control bridge (resumes from the cursor it saved in Firestore before the sweep).
 gcloud compute scp mission-control/bridge/install-on-vm.sh "$VM":/tmp/ $F
 gcloud compute ssh "$VM" $F --command "sudo -i MC_BRANCH=${MC_BRANCH:-mission-control} bash /tmp/install-on-vm.sh --service" < /dev/null
-bin/gcp/push-logins.sh   # stops here until ~/.factory-secrets holds both tokens
+bin/login.sh             # asks to sign in only if a credential is missing
+bin/gcp/push-logins.sh
 gcloud compute ssh "$VM" $F --command 'sudo -i bash -lc "cd ~/file-to-markdown-convertor && python3 factory/consumer.py doctor"'
