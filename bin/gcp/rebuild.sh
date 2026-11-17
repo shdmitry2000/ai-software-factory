@@ -4,6 +4,7 @@
 # Everything the factory needs between rebuilds lives in GitHub (app repo with its
 # committed factory files) and in .factory-secrets/ in this folder (bin/login.sh).
 set -euo pipefail
+source "$(dirname "$0")/env.sh"   # gcloud/docker config inside .factory-secrets
 cd "$(dirname "$0")/../.."
 export PROJECT=${PROJECT:-me-sb-dgcp-dpoc-pocyosh-pr} ZONE=${ZONE:-me-west1-a} VM=${VM:-factory-1}
 F="--project $PROJECT --zone $ZONE --tunnel-through-iap --quiet"

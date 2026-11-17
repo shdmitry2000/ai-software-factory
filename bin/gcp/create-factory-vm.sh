@@ -2,6 +2,7 @@
 # Create the factory VM on GCE and install the toolchain. Idempotent.
 #   PROJECT=... ZONE=... VM=... ./create-factory-vm.sh /path/to/bootstrap-ubuntu.sh
 set -euo pipefail
+source "$(dirname "$0")/env.sh"   # gcloud/docker config inside .factory-secrets
 PROJECT=${PROJECT:-me-sb-dgcp-dpoc-pocyosh-pr}
 ZONE=${ZONE:-me-west1-a}
 VM=${VM:-factory-1}

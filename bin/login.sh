@@ -5,11 +5,13 @@
 #   bin/login.sh --check    report what is there, change nothing
 #
 # Everything lands in <repo>/.factory-secrets/ (mode 700, files 600). The tools' own
-# config is pointed inside that folder too (GH_CONFIG_DIR, CLAUDE_CONFIG_DIR), so a sign-in
-# writes nothing to ~/.config/gh or ~/.claude. The folder is git-ignored and denied to agents
+# config is pointed inside that folder too (GH_CONFIG_DIR, CLAUDE_CONFIG_DIR, and through
+# bin/gcp/env.sh CLOUDSDK_CONFIG, DOCKER_CONFIG and gcloud's SSH keys), so a sign-in writes
+# nothing to ~/.config/gh, ~/.claude, ~/.config/gcloud, ~/.ssh or ~/.docker. The folder is git-ignored and denied to agents
 # in .claude/settings.json. Override the location with FACTORY_SECRETS_DIR (must stay inside
 # the repo). Tokens are read with `read -s` and never put on a command line.
 #
+#   gcloud/             Google Cloud login and config (gcloud auth login)
 #   gh_token            GitHub token (web sign-in, or a pasted fine-grained token)
 #   claude_token        long-lived Claude subscription token (`claude setup-token`)
 #   anthropic_api_key   or an Anthropic API key instead of the subscription token
@@ -19,6 +21,9 @@ DIR=${FACTORY_SECRETS_DIR:-$ROOT/.factory-secrets}
 mkdir -p "$DIR"
 DIR=$(cd "$DIR" && pwd -P)
 case "$DIR/" in "$ROOT"/*) ;; *) echo "FACTORY_SECRETS_DIR must be inside $ROOT" >&2; exit 1;; esac
+export FACTORY_SECRETS_DIR=$DIR
+source "$ROOT/bin/gcp/env.sh"
+PROJECT=${PROJECT:-me-sb-dgcp-dpoc-pocyosh-pr}
 chmod 700 "$DIR"
 umask 077
 MODE=${1:-}
@@ -44,6 +49,12 @@ github_status() {
   local who; who=$(GH_CONFIG_DIR="$DIR/gh" GH_TOKEN=$(cat "$DIR/gh_token") gh api user -q .login 2>/dev/null) \
     && echo "github: ok ($who)" || { echo "github: token rejected"; return 1; }
 }
+gcloud_status() {
+  local who; who=$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | head -1)
+  [ -n "$who" ] || { echo "gcloud: missing"; return 1; }
+  gcloud projects describe "$PROJECT" --format='value(projectId)' >/dev/null 2>&1 \
+    && echo "gcloud: ok ($who, $PROJECT)" || { echo "gcloud: $who cannot read $PROJECT"; return 1; }
+}
 claude_status() {
   if have claude_token; then
     [[ $(cat "$DIR/claude_token") == sk-ant-oat* ]] && echo "claude: subscription token" || { echo "claude: claude_token has an unexpected format"; return 1; }
@@ -54,9 +65,25 @@ claude_status() {
 
 if [ "$MODE" = --check ]; then
   echo "secrets: $DIR"; rc=0
-  github_status || rc=1; claude_status || rc=1; exit $rc
+  gcloud_status || rc=1; github_status || rc=1; claude_status || rc=1; exit $rc
 fi
-[ "$MODE" = --redo ] && rm -f "$DIR/gh_token" "$DIR/claude_token" "$DIR/anthropic_api_key"
+[ "$MODE" = --redo ] && rm -rf "$DIR/gh_token" "$DIR/claude_token" "$DIR/anthropic_api_key" "$DIR/gcloud" "$DIR/docker" "$DIR/gh" "$DIR/claude" "$DIR/home"
+
+# ---- Google Cloud ---------------------------------------------------------
+if ! gcloud_status >/dev/null 2>&1; then
+  choose "Google Cloud sign-in (project $PROJECT):" \
+    "Sign in with the browser (gcloud auth login + application-default login)" \
+    "Sign in on a machine without a browser (gcloud auth login --no-launch-browser)"
+  mkdir -p "$CLOUDSDK_CONFIG"
+  if [ "$REPLY" = 1 ]; then
+    gcloud auth login --update-adc
+  else
+    gcloud auth login --no-launch-browser --update-adc
+  fi
+  gcloud config set project "$PROJECT" >/dev/null 2>&1
+  gcloud config set compute/zone "${ZONE:-me-west1-a}" >/dev/null 2>&1
+  gcloud_status || { echo "Google Cloud sign-in did not give access to $PROJECT; run again." >&2; exit 1; }
+fi
 
 # ---- GitHub ---------------------------------------------------------------
 if ! github_status >/dev/null 2>&1; then
@@ -90,5 +117,5 @@ if ! claude_status >/dev/null 2>&1; then
   claude_status || { rm -f "$DIR/claude_token" "$DIR/anthropic_api_key"; echo "That did not look like a Claude token or API key; run again." >&2; exit 1; }
 fi
 
-echo "secrets: $DIR"; github_status; claude_status
+echo "secrets: $DIR"; gcloud_status; github_status; claude_status
 echo "Next: bin/gcp/push-logins.sh   (or bin/gcp/rebuild.sh after a sweep)"

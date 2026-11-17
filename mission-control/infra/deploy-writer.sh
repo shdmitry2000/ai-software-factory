@@ -3,6 +3,7 @@
 # topic. Idempotent. Run from the factory repo root after infra/setup.sh.
 #   PROJECT=... REGION=... mission-control/infra/deploy-writer.sh
 set -euo pipefail
+source "$(dirname "$0")/../../bin/gcp/env.sh"   # gcloud/docker config inside .factory-secrets
 export CLOUDSDK_CORE_DISABLE_PROMPTS=1
 PROJECT=${PROJECT:-me-sb-dgcp-dpoc-pocyosh-pr}
 REGION=${REGION:-me-west1}

@@ -2,6 +2,7 @@
 # Mission control GCP resources. Idempotent: rerun after any sweep.
 #   PROJECT=... REGION=... mission-control/infra/setup.sh
 set -euo pipefail
+source "$(dirname "$0")/../../bin/gcp/env.sh"   # gcloud/docker config inside .factory-secrets
 export CLOUDSDK_CORE_DISABLE_PROMPTS=1   # a prompt would hang an unattended run
 PROJECT=${PROJECT:-me-sb-dgcp-dpoc-pocyosh-pr}
 REGION=${REGION:-me-west1}

@@ -5,11 +5,12 @@
 #   claude_token | anthropic_api_key  Claude subscription token, or an Anthropic API key
 # Run bin/login.sh first. Tokens go over stdin, never on a command line.
 set -euo pipefail
+source "$(dirname "$0")/env.sh"   # gcloud/docker config inside .factory-secrets
 ROOT=$(cd "$(dirname "$0")/../.." && pwd -P)
 PROJECT=${PROJECT:-me-sb-dgcp-dpoc-pocyosh-pr}
 ZONE=${ZONE:-me-west1-a}
 VM=${VM:-factory-1}
-DIR=${FACTORY_SECRETS_DIR:-$ROOT/.factory-secrets}
+DIR=$FACTORY_SECRETS_DIR
 "$ROOT/bin/login.sh" --check >/dev/null || {
   echo "credentials missing or invalid in $DIR; run bin/login.sh" >&2; exit 1; }
 if [ -s "$DIR/claude_token" ]; then VAR=CLAUDE_CODE_OAUTH_TOKEN; FILE=claude_token

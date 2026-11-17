@@ -15,8 +15,14 @@ scripts below. About 25 minutes, most of it package downloads.
 
 ## 1. Create the VM and install the toolchain (Mac, ~8 min)
 
+Everything runs from the factory repo folder and keeps its logins and config there
+(see [sign in](#one-time-sign-in-credentials-stay-in-this-folder)). The scripts load
+[`bin/gcp/env.sh`](../bin/gcp/env.sh) themselves; for gcloud commands typed by hand, load
+it first so they use the same in-folder login:
+
 ```bash
 cd ~/code/software_factory/ai-software-factory
+source bin/gcp/env.sh
 PROJECT=me-sb-dgcp-dpoc-pocyosh-pr ZONE=me-west1-a VM=factory-1 TYPE=e2-standard-2 \
   bin/gcp/create-factory-vm.sh bin/bootstrap-ubuntu.sh
 ```
@@ -152,10 +158,11 @@ bin/login.sh            # asks only for what is missing; --check reports, --redo
 
 | Login | Options |
 |---|---|
+| Google Cloud | browser sign-in (`gcloud auth login --update-adc`), or `--no-launch-browser` on a machine without one. Config, SSH key, known hosts and docker's registry login all live in the folder (`CLOUDSDK_CONFIG`, `DOCKER_CONFIG`, a folder-local HOME for gcloud) |
 | GitHub | browser sign-in (`gh auth login --web`, with `GH_CONFIG_DIR` inside the folder), or paste a fine-grained token for the app repo |
 | Coding agent | Claude subscription sign-in (`claude setup-token`, `CLAUDE_CONFIG_DIR` inside the folder), paste an existing setup-token, or paste an Anthropic API key |
 
-It checks each credential (GitHub with `gh api user`, Claude by format), refuses a folder
+It checks each credential (Google Cloud by reading the project, GitHub with `gh api user`, Claude by format), refuses a folder
 outside the repo or one git does not ignore, and reads tokens with `read -s`. The folder is in
 `.gitignore`, and `.claude/settings.json` denies agents reading or editing it.
 [`bin/gcp/push-logins.sh`](../bin/gcp/push-logins.sh) sends the credentials to the VM over
