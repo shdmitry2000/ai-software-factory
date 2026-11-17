@@ -1,0 +1,274 @@
+# Console (operator UI): plan
+
+One console for the whole factory: every product, agent, run and report, the
+settings that steer them, and the buttons that act on them. It replaces the earlier
+"dashboard on Cloud Run behind Google sign-in" plan, because the owner's rule
+(2026-11-17) is that **everything is used only through the main node**.
+
+Status: plan, 2026-11-17. Architecture: [architecture.md](architecture.md) §9.
+Data and events: [mission-control-design.md](mission-control-design.md). Build steps
+are below and mirrored in [mission-control-plan.md](mission-control-plan.md) (Stage F).
+
+## 1. Goals
+
+1. **See everything at a glance**: products, agents, running and past runs, problems,
+   compliance findings, spend.
+2. **Change settings with a record**: base branch, compliance mode and rules label,
+   pool sizes, caps. Every change is an event with who, when, old and new value.
+3. **Act**: halt and unhalt, rerun, approve, add or drain an agent, move a prompt label.
+4. **Drill down**: from a product to its PRs, from a PR to its laps and compliance
+   reports, from a lap to its graph, nodes and agent messages.
+5. **Secure by construction**: reachable only through the main node; no public URL.
+
+Non-goals: replacing Archon's own run view (linked instead); editing code; reading
+holdout text (never shown).
+
+## 2. Access model
+
+```
+ operator laptop                         factory-1 (main node)
+ ┌──────────────────┐   IAP + OS Login   ┌──────────────────────────────────────┐
+ │ browser          │   (Google account, │ sshd ── forwards to ──▶ unix socket   │
+ │ localhost:8080 ──┼── SSH -L 8080: ───▶│         /run/factory-console/sock     │
+ │                  │   socket path)     │           │ (group factory-operators) │
+ └──────────────────┘                    │           ▼                           │
+   bin/gcp/console.sh opens the tunnel   │  console server (FastAPI)             │
+   and the browser                       │   reads Firestore (factory-vm SA)     │
+                                         │   publishes commands                  │
+                                         │   proxies Archon UI (127.0.0.1:3090)  │
+                                         └──────────────────────────────────────┘
+```
+
+- **No TCP port is exposed**, not even to the VPC: the console listens on a unix
+  socket. Only users who can SSH to factory-1 through IAP (an IAM grant) and who are
+  in the `factory-operators` group can reach it.
+- **Operator identity without passwords**: sshd connects to the socket as the
+  logged-in OS Login user, so the server reads the peer's uid (`SO_PEERCRED`) and maps
+  it to the Google account. Every command event carries that identity. (Spike UI-0.3
+  confirms this; fallback: a per-session token printed by `console.sh`.)
+- **Archon's console** moves behind the same server (`/archon/…` proxied to
+  `127.0.0.1:3090`); the IAP firewall rule for tcp:3090 is removed.
+- The console is **stateless**: everything it shows comes from Firestore, so the
+  weekly rebuild of factory-1 loses nothing.
+
+## 3. Technology
+
+| Choice | Why |
+|---|---|
+| **FastAPI** server in `mission-control/console/`, Python like the rest | reuses the ports (StateStore, EventBus, PromptRegistry, CodeHost) and their adapters |
+| **Server-rendered HTML + htmx**, live updates over **SSE** | no SPA build chain; the server holds Firestore listeners and pushes changed fragments |
+| **Cytoscape.js** (vendored, pinned) for run graphs | DAGs with fan-out and joins (design goal 3) |
+| Static assets vendored in the repo | works without the browser loading anything from the internet |
+| systemd unit `factory-console` | started by the VM setup; restarts on failure |
+
+Alternative kept open: a React SPA over the same JSON API (`/api/…`) if the views
+outgrow htmx. The API is designed first either way (OpenAPI in `mission-control/schema/`).
+
+## 4. Information architecture
+
+```
+ ┌───────────────────────────────────────────────────────────────────────────┐
+ │ Factory console    [Overview] Projects  Agents  Runs  Workflows           │
+ │                     Compliance  Problems  Memories  Prompts  Audit        │
+ │                                         operator: owner@…  ● live  ⏸ halt │
+ └───────────────────────────────────────────────────────────────────────────┘
+```
+
+| Screen | Answers | Reads | Actions | Stage |
+|---|---|---|---|---|
+| **Overview** | is everything healthy right now | rollups of all collections | halt all | UI-1 |
+| **Projects** | each product: open PRs, last lap, problems, compliance, git freshness | `products`, `compliance`, `problems` | edit settings (base branch, compliance mode, rules label, cap) | UI-1 / UI-2 |
+| **Project detail** | PRs with laps and reports; settings history | `products/{p}`, `work_items`, `compliance` | rerun, approve merge | UI-2 / UI-4 |
+| **Agents** | every instance: where, pool, state, current work, model, auth, spend | `agents`, `pools` | add agent, drain, set pool min/max | UI-1 / UI-3 |
+| **Runs** | history; retry chains; filters | `runs` | rerun, cancel | UI-1 / UI-4 |
+| **Run detail** | live graph, node status, handoffs, tool activity | `runs/{r}`, `nodes` | open in Archon | UI-4 |
+| **Workflows** | definitions, their runs, per-node agent conversation | `workflows`, `runs/{r}/messages` | – | UI-5 |
+| **Compliance** | every PR head's advisory report, rules version, findings, cost | `compliance` | re-review a PR | UI-1 |
+| **Problems** | what needs a human | `problems` | acknowledge, resolve | UI-2 |
+| **Memories** | mission, decisions, conventions, lessons with history | `memory_index` | propose change (opens PR) | UI-6 |
+| **Prompts & Skills** | versions, labels, diffs; which runs used which version | PromptRegistry, SkillRegistry | new version, move label (opens PR with git adapter) | UI-6 |
+| **Audit** | who did what, when | `commands`, settings events | – | UI-2 |
+
+## 5. Screens (wireframes)
+
+### Overview
+
+```
+ ┌ Health ──────────────────────────────────────────────────────────────────┐
+ │ Engines 1/1 alive   Agents 1 running (GKE 1, VM 0)   Problems 0 open       │
+ │ Laps today 0        Compliance reports today 3        Spend today $0.00   │
+ └──────────────────────────────────────────────────────────────────────────┘
+ ┌ Running now ────────────────────────┐ ┌ Needs you ─────────────────────────┐
+ │ (none)                              │ │ ⚠ Vertex models not enabled (OB1)   │
+ │                                     │ │ ⚠ GitHub identity not decided       │
+ └─────────────────────────────────────┘ └────────────────────────────────────┘
+ ┌ Recent ──────────────────────────────────────────────────────────────────┐
+ │ 12:01  compliance  converter #3  no_rules  rules v1   $0.00               │
+ │ 11:40  run         archon-holdouts  completed  6 m                        │
+ └──────────────────────────────────────────────────────────────────────────┘
+```
+
+### Projects → product settings
+
+```
+ file-to-markdown-convertor          github: shdmitry2000/file-to-markdown-convertor
+ ┌ Settings ───────────────────────────────────────────────── [Edit] ┐
+ │ Base branch        main            changed 2026-11-17 by owner      │
+ │ Compliance         advisory · rules compliance/rules @ production (v1, empty) │
+ │ Daily cap          $1.00                                             │
+ │ Pools              compliance (1..3), builders (1..1)                │
+ └──────────────────────────────────────────────────────────────────────┘
+ ┌ Open PRs ────────────────────────────────────────────────────────────┐
+ │ #3 Factory mission draft  → main  head f9b6bff  compliance: no_rules  │
+ │    laps: –   checks: –   merge: on hold                               │
+ └──────────────────────────────────────────────────────────────────────┘
+ Edit dialog: field, new value, reason (required) → [Preview event] [Apply]
+```
+
+### Agents
+
+```
+ Pool        Kind        Runtime  Replicas (min..max)  [+ Add] [Drain]
+ compliance  compliance  gke      1 (1..3)
+ builders    engine      gce      1 (1..1)
+ ┌──────────────────────────────────────────────────────────────────────────┐
+ │ agent              location                         state  model   auth  │
+ │ compliance-7f9c    gke:factory-agents/compliance-7f9c idle  haiku   vertex│
+ │ factory-1          gce:me-west1-a/factory-1         busy   opus    subscr│
+ └──────────────────────────────────────────────────────────────────────────┘
+```
+
+### Run detail (live)
+
+```
+ run 8f3c21 · archon-sdlc-loop · converter #14 · attempt 2 (rerun of 7a01…)
+   pick ──▶ build ──┬──▶ validate ───┐
+                    ├──▶ app-check ──┼──▶ review ──▶ merge-gate ──▶ deploy
+                    └──▶ holdout ────┘      ● running: reviewer-b (sonnet)
+ node build: 6m12s · 41k tokens · tools: Edit 12, Bash 7, Read 30   [messages ▸]
+```
+
+### Compliance
+
+```
+ product     PR  head     base  rules      status    findings  cost   reported
+ converter   #3  f9b6bff  main  v1 (0)    no_rules  –         $0.00  12:01
+ [rules: compliance/rules @ production → v1]  [view versions] [re-review]
+```
+
+## 6. Actions and how they execute
+
+Every action is a command, never a direct write:
+
+```
+ button ─▶ console server: validate + who ─▶ dev.factory.command.issued (factory-commands)
+        ─▶ handler on factory-1 (or GKE reconciler) ─▶ acknowledged / refused
+        ─▶ result event (product.updated, engine.halted, pool.scaled …) ─▶ projections
+```
+
+| Action | Command | Executed by | Result event |
+|---|---|---|---|
+| Change base branch / compliance mode / cap | `product.update {field, old, new, reason}` | handler (checks old value matches) | `dev.factory.product.updated` |
+| Halt / unhalt engine | `engine.halt` / `engine.unhalt` | handler → `consumer.py halt` | `engine.halted` / `engine.unhalted` |
+| Rerun / cancel run | `run.rerun` / `run.cancel` | handler → Archon | `run.started` (chained) / `run.cancelled` |
+| Approve merge | `approval.resolve` | handler → Archon | `approval.resolved` |
+| Add agent / drain / pool size | `pool.scale {pool, min, max}` / `agent.drain` | reconciler | `pool.scaled`, `agent.heartbeat` |
+| New prompt version / move label | `prompt.propose {name, text}` / `prompt.label {name, label, version}` | PromptRegistry adapter (git: opens a PR; service: needs approver) | `prompt.version.created`, `prompt.label.moved` |
+| Re-review a PR | `compliance.rereview {product, pr}` | compliance agent | `compliance.reported` |
+| Propose memory change | `memory.propose` | MemoryStore (opens a PR) | `memory.changed` after merge |
+
+Rules: destructive actions ask to confirm; every command needs a reason; settings
+changes are optimistic-locked (the old value must match); the console never writes to
+Firestore itself.
+
+**Base branch as a setting.** `products/<product>.yaml` seeds it. A console change
+emits `product.updated`; the `products` projection holds the current value; the engine
+and agents read it from there at the start of each lap or tick. A change applies to
+the next lap and never to a PR already open (its base stays what it was opened with).
+
+## 7. Build steps
+
+Each step ends with a check anyone can run. "API" means a JSON route the page uses
+and tests call.
+
+### UI-0 Shell and access
+
+| # | Step | Done when |
+|---|---|---|
+| UI-0.1 | `mission-control/console/` FastAPI app, layout, nav, health route; runs locally against memory adapters | `uvicorn` locally shows the empty shell; unit test for `/api/health` |
+| UI-0.2 | systemd unit `factory-console` on factory-1, unix socket `/run/factory-console/sock`, group `factory-operators` | `curl --unix-socket` on the VM returns health; nothing listens on TCP |
+| UI-0.3 | Spike: operator identity from `SO_PEERCRED` through `ssh -L` to the socket; map uid → OS Login user → Google account | the page header shows the real operator; fallback token documented if it fails |
+| UI-0.4 | `bin/gcp/console.sh`: IAP SSH tunnel to the socket, opens the browser | from the Mac the console opens; from another machine without IAP grant it does not |
+| UI-0.5 | Archon UI proxied at `/archon/`; firewall rule for tcp:3090 removed | Archon pages work through the console; direct IAP to 3090 refused |
+| UI-0.6 | SSE live channel: server-side Firestore listeners push fragments | a new event appears on the page within 2 s without reload |
+
+### UI-1 Status, read-only (Stage F + Q views)
+
+| # | Step | Done when |
+|---|---|---|
+| UI-1.1 | Overview health tiles and "needs you" list | numbers match Firestore by hand count |
+| UI-1.2 | Agents view (from `agents`, `engines`) | factory-1 and the compliance pod both listed live |
+| UI-1.3 | Projects view (from `products`, `compliance`) | the converter with its open PRs and reports |
+| UI-1.4 | Compliance view | every report with rules version, findings, cost |
+| UI-1.5 | Runs view: history, filters, retry chains | a rerun shows under its first attempt |
+| UI-1.6 | Problems view (with Stage F rules) | a forced failure shows and clears |
+
+### UI-2 Settings, commands and audit (Stage M + N1)
+
+| # | Step | Done when |
+|---|---|---|
+| UI-2.1 | Command events and the factory-1 command handler (`product.update`, `engine.halt`) with schemas | unit tests: optimistic lock, refused on stale old value |
+| UI-2.2 | Product settings editor (base branch, compliance mode, rules label, cap) | changing base branch emits `product.updated`; next lap uses it; open PRs unchanged |
+| UI-2.3 | Halt / unhalt button | engine halts; audit shows operator and reason |
+| UI-2.4 | Audit view | every command with who, when, reason, result |
+| UI-2.5 | Problems: acknowledge / resolve | state change recorded as an event |
+
+### UI-3 Fleet (Stage R)
+
+| # | Step | Done when |
+|---|---|---|
+| UI-3.1 | Pools panel from `fleet.yaml` + overrides | pools listed with min..max |
+| UI-3.2 | Add agent / drain / set min..max → `pool.scale` | a new compliance pod appears in Agents within 2 minutes |
+
+### UI-4 Live runs (Stage H)
+
+| # | Step | Done when |
+|---|---|---|
+| UI-4.1 | Run detail graph (Cytoscape, live node colours) | a fan-out shows parallel running nodes |
+| UI-4.2 | Node panel: times, tokens, tool rollup, handoffs | edge click shows what was handed over |
+| UI-4.3 | Rerun / cancel / approve buttons | a rerun starts and chains |
+
+### UI-5 Workflows and messages (Stage S)
+
+| # | Step | Done when |
+|---|---|---|
+| UI-5.1 | Workflow catalog and its runs | pinned and project workflows listed |
+| UI-5.2 | Per-node conversation (dispatch → tools → reply), large bodies from blobs | a lap's messages readable; holdout agents show metadata only |
+
+### UI-6 Memories, prompts and skills (Stages U, T)
+
+| # | Step | Done when |
+|---|---|---|
+| UI-6.1 | Memories: read, history, diff; propose change → PR | a PR opens against the base branch |
+| UI-6.2 | Prompts: versions, labels, diff; which reports/runs used each version | compliance rules v1 shown with its reports |
+| UI-6.3 | Rules editor: new version + move label (git adapter: opens a PR) | merging the PR changes the next report's rules version |
+| UI-6.4 | Skills: marketplace versions per lap | a run lists its skill versions |
+
+## 8. Order with the rest of the plan
+
+```
+ OB1 (Vertex) → OC1–OC3 (compliance agent live)
+   → UI-0 → UI-1 (+ Q1–Q5 data) → UI-2 (+ N1 settings, M1)
+   → R + UI-3 → H + UI-4 → S + UI-5 → I/U/T + UI-6 → E (first real lap)
+```
+
+UI-0 and UI-1 can start in parallel with OC steps: they read collections that already
+exist (`runs`, `nodes`, `engines`) and the new ones (`agents`, `compliance`).
+
+## 9. Open questions
+
+- Operator identity: confirm `SO_PEERCRED` through `ssh -L` (UI-0.3).
+- More operators later: OS Login + IAM grants per person; the `factory-operators`
+  group on factory-1 is managed by the VM setup script.
+- Should the console ever be reachable when factory-1 is down (weekend)? Today: no;
+  history stays in Firestore and is visible again after rebuild.

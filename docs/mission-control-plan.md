@@ -6,12 +6,15 @@ check passes. Design: [mission-control-design.md](mission-control-design.md).
 
 Legend: ☐ to do · ◐ in progress · ☑ done
 
-**Order (2026-11-17).** A–D done → **N** (PR-only guardrails) → **O** (compliance agent on
-GKE, advisory: the owner's near-term goal) → F (dashboard) → **Q** (projects and agents)
-→ **R** (fleet and scale-out) → **S** (workflow browser and messages) → I + **U** (memory
-and its browser) → **T** (prompt and skill managers, independent) → E (first lap on the
-converter) → G, H, J, K, L, M. Letters are names, not order; each step's check must pass
-before the next starts.
+**Order (2026-11-17, updated).** A–D done → **O** (compliance agent on GKE: O-A done,
+O-B mostly done, waits on Vertex access) → **console UI-0, UI-1** (Stage F, can start
+alongside O-C) → **Q** (projects and agents data) → **UI-2** + N + M1 (settings,
+commands, audit) → **R** + UI-3 (fleet) → H + UI-4 (live runs) → **S** + UI-5
+(workflows and messages) → I + **U** + **T** + UI-6 (memories, prompts, skills) → E
+(first real lap on the converter) → G, J, K, L. Letters are names, not order; each
+step's check must pass before the next starts.
+
+Architecture: [architecture.md](architecture.md). Console: [console-ui-plan.md](console-ui-plan.md).
 
 ## Stage 0 — Ground already laid
 
@@ -83,18 +86,22 @@ On hold by the owner (2026-11-17): converter PR #3 waits until the factory is pr
 | E5 | `consumer.py doctor` and `list` | no failures | ☐ |
 | E6 | One lap: `run archon-loop --input merge=approve` | the lap is visible in Archon's console **and** in Firestore `runs` | ☐ |
 
-## Stage F — Dashboard v1, read-only (P1)
+## Stage F — Console v1: shell, access, read-only status (P1)
+
+Replaces "dashboard on Cloud Run": the console runs **on the main node only**, behind
+an IAP SSH tunnel to a unix socket. Full plan, wireframes and later UI stages (UI-2 …
+UI-6): [console-ui-plan.md](console-ui-plan.md).
 
 | # | Step | Done when | |
 |---|---|---|---|
-| F1 | Web skeleton, Google sign-in, Firestore rules read-only for the org | you can sign in and see an empty page; a stranger cannot | ☐ |
-| F2 | Engines view | factory-1 heartbeat live | ☐ |
-| F3 | History: list of runs | the lap from E6 is listed | ☐ |
-| F4 | History: retry chains grouped by work item, status filters | a rerun shows under its first attempt | ☐ |
-| F5 | Problem rule: failed step opens, later success resolves | forced failure opens a problem; rerun resolves it | ☐ |
-| F6 | Problems view | the problem from F5 shows and clears | ☐ |
-| F7 | Time rules (stuck run, silent engine, waiting on human) via Cloud Scheduler every 5 min | stopping the bridge opens "engine silent" within 5 min | ☐ |
-| F8 | Deploy the dashboard to Cloud Run | reachable at its URL behind sign-in | ☐ |
+| F1 | UI-0.1–0.2: FastAPI console in `mission-control/console/`, systemd unit on factory-1, unix socket, group `factory-operators` | health over the socket on the VM; nothing listens on TCP | ☐ |
+| F2 | UI-0.3–0.4: operator identity (`SO_PEERCRED`) and `bin/gcp/console.sh` tunnel | the header shows the operator; opens from the Mac only with the IAP grant | ☐ |
+| F3 | UI-0.5–0.6: Archon UI proxied, port 3090 rule removed; SSE live updates | new events show within 2 s; direct 3090 refused | ☐ |
+| F4 | UI-1.1–1.2: Overview and Agents | factory-1 and the compliance pod listed live | ☐ |
+| F5 | UI-1.3–1.4: Projects and Compliance | the converter's PRs with their reports and rules version | ☐ |
+| F6 | UI-1.5: Runs history with retry chains | a rerun shows under its first attempt | ☐ |
+| F7 | Problem rules (failed step, stuck run, silent engine/agent) via Cloud Scheduler every 5 min + UI-1.6 Problems view | stopping the bridge opens "engine silent" within 5 min and it shows | ☐ |
+| F8 | Console in `rebuild.sh` (VM setup installs and starts it) | after a rebuild the console opens with all history | ☐ |
 
 ## Stage G — Work items through the tracker and code host ports (P2)
 

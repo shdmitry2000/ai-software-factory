@@ -5,7 +5,7 @@ failed or was rerun, where each piece of work is, and how the agents handed work
 each other. Built on GCP Pub/Sub and Firestore, outside the factory VM, so history
 survives the weekly sandbox sweep.
 
-Status: design agreed 2026-11-15; **P0 done 2026-11-15** (Stages A–D of the plan): factory-1's Archon runs reach Firestore projections live. Pinned Archon: `1cfb8fc5`.
+Architecture overview: [architecture.md](architecture.md). Status: design agreed 2026-11-15; **P0 done 2026-11-15** (Stages A–D of the plan): factory-1's Archon runs reach Firestore projections live. Pinned Archon: `1cfb8fc5`.
 2026-11-17: added [git rules](#git-rules-prs-only), [projects and agents](#projects-and-agents-status),
 [agent fleet](#agent-fleet-and-automatic-scale-out), [GKE agents and the compliance agent](#gke-agents-and-the-compliance-agent),
 [workflow browser](#workflow-browser-and-agent-messages), [memories browser](#memories-browser), and the
@@ -197,10 +197,11 @@ calling the writer every 5 minutes.
 
 ## Dashboard
 
-A single-page web app reading Firestore directly through live listeners (no
-WebSocket or SSE server of our own). Hosted on Cloud Run behind Google sign-in limited
-to the org domain; Firestore security rules make it read-only for those users, and
-only the writer's service account can write.
+**Changed 2026-11-17:** the console runs **on the main node only** (factory-1), on a
+unix socket reached through an IAP SSH tunnel; its server reads Firestore with the main
+node's identity and pushes live updates over SSE; every action is a command event.
+No public URL, no browser access to Firestore. Plan, screens and wireframes:
+[console-ui-plan.md](console-ui-plan.md); the whole system: [architecture.md](architecture.md).
 
 | View | Answers | Reads |
 |---|---|---|
