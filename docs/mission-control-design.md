@@ -6,6 +6,10 @@ each other. Built on GCP Pub/Sub and Firestore, outside the factory VM, so histo
 survives the weekly sandbox sweep.
 
 Status: design agreed 2026-11-15; **P0 done 2026-11-15** (Stages A–D of the plan): factory-1's Archon runs reach Firestore projections live. Pinned Archon: `1cfb8fc5`.
+2026-11-17: added [git rules](#git-rules-prs-only), [projects and agents](#projects-and-agents-status),
+[agent fleet](#agent-fleet-and-automatic-scale-out), [GKE agents and the compliance agent](#gke-agents-and-the-compliance-agent),
+[workflow browser](#workflow-browser-and-agent-messages), [memories browser](#memories-browser), and the
+independent [prompt and skill managers](prompt-skill-manager-design.md).
 
 ## Goals
 
@@ -36,6 +40,7 @@ Status: design agreed 2026-11-15; **P0 done 2026-11-15** (Stages A–D of the pl
 | Runs | `remote_agent_workflow_runs`: workflow, status (`pending running completed failed cancelled paused`), outcome, metadata, parent conversation, start/end, last activity |
 | Events | `remote_agent_workflow_events`: `workflow_started/completed/failed/cancelled`, `node_started/completed/failed/skipped/suspended`, `node_skipped_prior_success` (a rerun skipping work already done), `loop_iteration_*`, `approval_pending`, `workflow_artifact`, `provider_event` (agent tool activity), `container_lifecycle` |
 | Agent sessions | `remote_agent_workflow_node_sessions`: provider session per node, across reruns |
+| Agent activity (checked 2026-11-17 on factory-1, `archon-holdouts` run) | `provider_event` rows per AI node, `data.event.type` one of: `tool_call` (`name`, `rawInput`, `toolCallId`; an `Agent` call's `rawInput` holds `subagent_type`, `description` and the full dispatch `prompt`), `tool_call_update` (`output`, `status`, sometimes `outputTruncated`), `subtask` (a subagent's lifecycle: `taskId`, `parentToolCallId`, `status`, `lastToolName`, `usage`, and its reply as `summary`), `agent_message_chunk` (`text`), `state_update`. Largest stored `rawInput` 19.7 KB, `output` 18.6 KB. `node_completed.node_output` holds the node's final text. `remote_agent_messages` is empty: it serves chat platforms, not workflows |
 
 Archon's engine is already a DAG executor (fan-out, parallel nodes, sub-runs). What
 is missing is the cross-run, cross-source story: issue → laps → PR → checks → review →
@@ -118,7 +123,12 @@ message:
   Firestore writes and cost bounded.
 - **Redaction** happens in the bridge before publishing: token-shaped strings
   and anything under `.factory/holdout/` are dropped, so the holdout fence holds on
-  the bus too.
+  the bus too. Path filtering is not enough: the holdout agents' own tool calls and
+  replies carry scenario text in `rawInput`, `output` and `summary` (see
+  [what Archon records](#what-archon-already-records)). So for any node or subtask
+  belonging to a holdout agent (`holdout-writer`, `holdout-verifier`, the
+  `archon-holdouts` workflow) the bridge publishes **metadata only** (type, tool name,
+  sizes, status, verdict) and never content.
 
 ### Sources
 
@@ -199,6 +209,10 @@ only the writer's service account can write.
 | **History** | What finished / failed / was rerun, how long, how much | `runs` by time, grouped by work item; filters: product, workflow, status, engine |
 | **Problems** | What needs a human now | `problems` where open, by severity |
 | **Engines** | Is each factory alive, halted, paused, on which pin | `engines` |
+| **Projects** | Every product at a glance: open PRs, last lap, problems, compliance findings, freshness of its git data | `products`, `work_items`, `problems`, `compliance` |
+| **Agents** | Every agent instance: where it runs (VM, GKE pod, laptop), pool, state, current work, model, sign-in method; add or remove agents | `agents`, `pools` |
+| **Workflows** | Every workflow definition, its runs, and the messages its agents exchanged | `workflows`, `runs`, `runs/{id}/messages` |
+| **Memories** | Each product's mission, decisions, conventions and lessons, with history and diffs | `memory_index` |
 
 Each run links to its page in Archon's console for the deep view.
 
@@ -224,6 +238,10 @@ database memory is a new adapter plus a config change, never a change to the cor
 | **Identity** | OIDC sign-in, roles (owner, viewer, engine) | Google sign-in | Okta, Entra ID, any OIDC |
 | **Telemetry** | OpenTelemetry traces and metrics over OTLP | Cloud Trace | Grafana Tempo, Honeycomb, any OTLP |
 | **Gateway API** | OpenAPI 3.1 (HTTP), AsyncAPI 3.0 (the bus) | Cloud Run | anything that serves the spec |
+| **AgentRuntime** | pools of agent instances: deploy(spec), scale(pool, n), list, drain, delete; spec is an OCI image + env + resources | GKE (Kubernetes API) | GCE VMs (`create-factory-vm.sh`), local Docker, Cloud Run jobs, any Kubernetes |
+| **BlobStore** | put/get by content hash, signed read URL, TTL | Cloud Storage | S3, Azure Blob, MinIO, local disk |
+| **GitActivity** | product repo changes as events: PRs, pushes, checks, issues | GitHub polling (no public endpoint) | GitHub webhooks (`gh-ingest`), GitLab |
+| **PromptRegistry**, **SkillRegistry** | see [prompt-skill-manager-design.md](prompt-skill-manager-design.md); mission control is only a client | the factory's own service | Langfuse, MLflow, a git repo, OCI artifacts |
 
 ### What makes a swap quick
 
@@ -347,6 +365,167 @@ A product-level view of the work in order:
 Built from `work_items`, `runs` and a new `queue` collection the coordinator writes:
 `queue/{product}` → ordered items with `reason`, `depends_on`, `eligible_engines`.
 
+## Git rules: PRs only
+
+Product repos change **only through pull requests**. Nothing pushes to a shared branch:
+not a builder, not the holdout writer, not mission control, not a person through the
+factory. Other teams work on the same code.
+
+- **Base branch is per-product configuration**, not a convention. Which branch PRs
+  target (`develop` or `main`) is **undecided**; each product's entry in
+  `products/<product>.yaml` names it (`base_branch`), and until the owner decides it
+  stays what the repo uses today. Nothing in mission control assumes a name.
+- **Where the pinned engine disagrees.** Archon's shared workflows say "default
+  branch": builders branch from it, the manager tests it, and the `holdout-writer`
+  brief commits scenarios to it and **pushes** (that is how `d58edec` reached the
+  converter's `main` on 2026-11-17). The land gate and app check already use each PR's
+  own `baseRefName`. We do not fork the workflows; we extend around them:
+  - holdouts are written to a scenario file **outside the repository** (the writer's
+    brief: "a scenario file outside the repository is saved, not committed"), kept on
+    the engine and backed up to a private bucket through the BlobStore port, later the
+    MemoryStore (holdout scope);
+  - a read-only **git-rules check** (in `doctor` style) reports per product whether the
+    base branch requires a PR and blocks direct pushes, and opens a problem if not;
+  - if the owner picks a base branch other than the repo's GitHub default, either the
+    default is changed (owner's call) or the gap is raised upstream with Archon; until
+    then the factory's builders follow the repo default.
+- **The factory needs its own identity** (GitHub App preferred, or a machine user) so
+  branch protection, audit and comments tell it apart from a person. Today it uses the
+  owner's token. Open decision.
+
+## Projects and agents status
+
+One console for every product and every agent.
+
+- **Products registry.** `products/<product>.yaml` in the factory repo (repo, base
+  branch, tracker, assigned pools, compliance mode) is published as
+  `dev.factory.product.registered`; the `products` collection is its projection plus
+  rollups: open PRs, laps today, last lap result, open problems, compliance findings,
+  and `git_seen_at` (how fresh the git data is).
+- **Git changes keep it current** through the **GitActivity** port. The first adapter
+  polls GitHub (every 60 s per product, ETag-conditional, so it costs nearly nothing and
+  needs no public endpoint, which the sandbox may not allow). The webhook adapter
+  (`gh-ingest`, Stage G) is a later swap with no core change. Both publish the same
+  `dev.factory.workitem.*`, `dev.factory.pr.*`, `dev.factory.check.*` events.
+- **Agents.** Every running instance, whatever it is (an engine VM, a GKE pod, a
+  laptop), heartbeats as `dev.factory.agent.heartbeat` with: `agent_id`, `pool`, `kind`
+  (`engine`, `compliance`, …), `location` (`gce:me-west1-a/factory-1`,
+  `gke:factory-agents/compliance-7f9c`, `host:mac-…`), state (`starting idle busy
+  draining silent`), current run and node, model and tier, auth method (never the
+  secret), version (image digest or Archon pin). The `agents` collection is the
+  projection; `engines` stays for the bridge cursor.
+
+## Agent fleet and automatic scale-out
+
+"Add more agents automatically" means a **desired state** that a reconciler makes true.
+
+```yaml
+# fleet.yaml (factory repo); the dashboard edits the same values through a command
+pools:
+  - name: compliance
+    kind: compliance
+    runtime: gke              # AgentRuntime adapter
+    image: me-west1-docker.pkg.dev/<project>/mission-control/agent:<digest>
+    products: [file-to-markdown-convertor]
+    replicas: {min: 1, max: 3}
+    scale_on: pending_prs     # or: queue_depth, schedule, fixed
+    model: {tier: small, effort: low}
+    mode: advisory
+  - name: builders
+    kind: engine
+    runtime: gce
+    replicas: {min: 1, max: 1}
+```
+
+- **AgentRuntime port** (deploy, scale, list, drain, delete) with adapters for GKE,
+  GCE VMs (wrapping `create-factory-vm.sh`) and local Docker; one contract suite.
+- **Reconciler**: compares `fleet.yaml` (plus dashboard overrides) with what
+  `AgentRuntime.list` reports and with demand (pending PRs, coordinator queue depth),
+  then scales within `min..max`. It runs as a Cloud Run job every minute; on GKE the
+  same rule can be delegated to a Kubernetes autoscaler (KEDA on a Pub/Sub backlog) as
+  an adapter detail.
+- **From the console**: "Add agent" raises a pool's replicas through a
+  `dev.factory.command.scale` command; "Drain" lets the current work finish first.
+- **Rebuildable**: the sweep deletes GKE clusters and VMs. The fleet's desired state
+  lives in git and Firestore, images in Artifact Registry (not swept), so
+  `rebuild.sh` recreates the cluster and the reconciler brings every pool back.
+
+## GKE agents and the compliance agent
+
+The first agent on GKE is a **compliance agent**: it reviews every open PR of the
+products it is assigned to against written compliance rules and reports findings.
+
+**Assumption, from the owner's "put it to work on zero effort for now":** it runs
+continuously but **advisory only**. It reports, and never blocks a merge (no required
+check, no failing status, no review "request changes"), at the **lowest reasoning
+effort and the cheapest model tier**, with a daily spend cap. Changing to enforcing
+mode is a later, explicit owner decision (it would then post a required check that
+`required_checks` lists, so the land gate refuses until it is green).
+
+- **Image**: one agent image (pinned Archon + Claude Code + `gh` + the bridge), built
+  in CI and pushed to Artifact Registry. The same image can serve as a builder engine
+  later.
+- **Workflow**: a project-level Archon workflow kept in the factory repo
+  (`agents/compliance/`), not a fork of the pinned pack: `select` (script: next PR head
+  not yet reviewed) → `diff` (script) → `review` (agent: small tier, low effort, rules
+  from `agents/compliance/rules.md`, later from the PromptRegistry) → `report`
+  (script: CloudEvent `dev.factory.compliance.reported` with findings, severity, rule
+  ids, the reviewed head SHA). Running inside Archon means the existing bridge carries
+  its events to the console unchanged.
+- **Where reports go**: Firestore `compliance/{product}__{pr}` (projection) and the
+  console's Projects view. Posting an advisory PR comment (one comment, edited in
+  place, clearly marked advisory) waits for the factory's own GitHub identity.
+- **Cluster**: GKE Autopilot `factory-agents` in me-west1, created by an idempotent
+  `bin/gke/create-cluster.sh`, called from `rebuild.sh`. Pods use Workload Identity
+  (service account `factory-agent`: Pub/Sub publisher on `factory-events` only); no
+  key files. The coding-agent credential reaches the pod as a Kubernetes Secret created
+  by the deploy script from `.factory-secrets/` over stdin (later Secret Manager).
+- **Sandbox**: the pod is the sandbox. The compliance agent only reads diffs; it gets a
+  read-only GitHub token and no write access to any repo.
+
+## Workflow browser and agent messages
+
+A **Workflows** view: every workflow definition (pinned pack and project-level), its
+runs, each run's graph, and for each node the **conversation** between agents:
+orchestrator → subagent dispatch prompt → the subagent's tool calls → its reply → the
+node's final output.
+
+- **Source**: Archon's `provider_event` rows (verified above). New event types:
+  `dev.factory.agent.dispatched` (from node/agent, to `subagent_type`, prompt),
+  `dev.factory.agent.replied` (subtask summary, usage), `dev.factory.agent.message`
+  (assistant text), `dev.factory.tool.called` / `dev.factory.tool.returned`.
+- **Size**: bodies over the 16 KB event cap go to the **BlobStore** (content hash as
+  the key); the event and the `runs/{run}/messages/{seq}` document carry a 2 KB preview
+  plus the blob reference. The tool-activity rollup per node (H4) stays for the live
+  console; the message log is the full record.
+- **Redaction**: holdout agents are metadata-only (see the envelope rules); a secret
+  scanner runs on every body; bodies keep the run's retention (90 days).
+- **Workflow catalog**: definitions come from each run's captured source
+  (`metadata.workflow_source`) and from `consumer.py list`, published as
+  `dev.factory.workflow.declared` and kept in `workflows/{name}@{digest}`.
+
+## Memories browser
+
+A **Memories** view per product over the **MemoryStore** port (Stage I): mission,
+decisions, conventions (`engineering.md`), journeys, lessons and agent-written notes,
+each with versions, a diff between versions, and where a change came from (PR or run).
+
+- Read-only by default. "Propose a change" opens a **pull request** through the
+  CodeHost port (git-files adapter) or a pending version that needs approval (database
+  adapter). Never a direct write to a shared branch.
+- **Holdouts are never shown as text** in mission control: the browser lists scenario
+  ids, the product rule each protects, and verdict history only. The text stays with
+  the owner's editor and the holdout agents.
+- The `memory_index` collection holds metadata (title, kind, version, size, updated,
+  source link), never the text of holdouts.
+
+## Prompt and skill managers
+
+Designed as **independent services** with their own APIs, usable without mission
+control: [prompt-skill-manager-design.md](prompt-skill-manager-design.md). Mission
+control is a client: the console shows which prompt and skill versions each run pinned
+(`dev.prompts.lock.pinned`), and links to the managers for browsing and diffs.
+
 ## Security and cost
 
 - **Identities:** VM service account `factory-vm` (Pub/Sub publisher on
@@ -367,6 +546,9 @@ Built from `work_items`, `runs` and a new `queue` collection the coordinator wri
 | **P2** | **Console** (live graph, agents, handoffs, tool activity), **Board**, gh-ingest, Slack alerts | a running lap is watchable end to end, parallel branches included |
 | **P3** | **Gateway** + engine tokens; **join agent** (toolchain, Docker sandbox, auth prompts, approval); **Engines** screen; `factory-commands` (halt/approve/rerun) | a laptop joins with one command, asks for its logins, and its laps show on the dashboard |
 | **P4** | **Coordinator** (queue, placement, reassignment, reasons) and the **Flow** screen; second product | work spreads over two engines, and Flow shows done → doing → next with the reason for each |
+| **A1** (early, owner's near-term goal) | PR-only guardrails; agent image; GKE cluster script; **compliance agent** on GKE in advisory mode | every new PR commit on the converter gets a compliance report in Firestore within 10 minutes, and no merge is ever blocked by it |
+| **A2** | Projects and Agents views; GitHub polling; fleet reconciler and scale-out | a push shows in Projects within 2 minutes; raising a pool's max adds pods that appear in Agents |
+| **A3** | Workflows view with agent messages; Memories view; prompt and skill managers | a lap's dispatch prompts and replies are readable per node (holdout agents metadata-only); a run shows its pinned prompt versions |
 
 ## Open questions
 
@@ -374,6 +556,27 @@ Built from `work_items`, `runs` and a new `queue` collection the coordinator wri
   topics in the project have survived past sweeps; the rest is checked in P0.
 - The upstream factory's `DECISIONS.md` mentions a "mission-control dashboard". Ask
   upstream whether one exists before P1 to avoid building it twice.
+- **Base branch** for product PRs (`develop` or `main`): owner's decision, open.
+- **Factory GitHub identity** (GitHub App or machine user): owner's decision, open.
+- **Compliance rules**: which ones apply (dependency licences, secrets, personal data,
+  protected paths, bank policy). Owner's input needed before the agent reviews anything.
+- **Agent messages, unverified details** (only one AI run inspected so far):
+  whether a subagent's own tool calls are attributed to it (`tool_call` rows carry no
+  `parentToolCallId`; `subtask` rows carry `lastToolName` only); whether
+  `agent_message_chunk` holds every assistant turn or only the last (the inspected node
+  had one chunk, equal in size to `node_output`); the truncation threshold behind
+  `outputTruncated`; whether the rendered prompt of a node's own agent (not a
+  subagent's) is stored anywhere.
+- **Project-level workflows**: does the pinned Archon load workflows from a directory
+  outside the product repo (Archon home or a configured path)? Needed for the compliance
+  workflow without committing it to the product repo.
+- **Subscription token in pods**: whether running the owner's subscription token in
+  unattended pods is acceptable for usage limits and terms, or the compliance agent
+  should use an API key or Vertex AI identity (AgentAuth already allows all three).
+- **GKE in the sandbox**: Autopilot quota in me-west1, and whether org policy allows
+  Workload Identity bindings there.
+- **Public endpoints**: whether org policy allows an unauthenticated Cloud Run service
+  (needed for GitHub webhooks); polling avoids the question.
 
 ## Code layout
 
@@ -394,6 +597,16 @@ mission-control/
   writer/            bus → projections → StateStore (Cloud Run)
   gateway/           engine tokens, events in, commands out (P3)
   coordinator/       queue and placement (P4)
+  fleet/             reconciler: fleet.yaml + demand → AgentRuntime
+  adapters/runtime/  gke/, gce/, docker/
+  adapters/blob/     gcs/, memory/
+  adapters/git/      github_poll/, github_webhook/
+agents/
+  compliance/        project-level Archon workflow, rules.md, scripts
+  image/             Dockerfile for the agent image (Archon pin + Claude Code + gh + bridge)
+products/            one YAML per product: repo, base_branch, pools, compliance mode
+fleet.yaml           desired agent pools
+bin/gke/             create-cluster.sh, deploy.sh (called from rebuild.sh)
   web/               dashboard
   infra/             gcloud scripts
   mission-control.yaml   which adapter each port uses
