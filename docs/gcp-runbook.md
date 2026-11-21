@@ -30,7 +30,7 @@ PROJECT=me-sb-dgcp-dpoc-pocyosh-pr ZONE=me-west1-a VM=factory-1 TYPE=e2-standard
 [`bin/gcp/create-factory-vm.sh`](../bin/gcp/create-factory-vm.sh) is idempotent. It:
 
 - creates firewall rule `allow-iap-ssh-factory` (tcp:22 from `35.235.240.0/20`, tag `factory`);
-- creates firewall rule `allow-iap-archon-factory` (tcp:3090, IAP only) for the Archon console;
+- opens only SSH from the IAP range (no rule for 3090; the consoles go over SSH);
 - creates the VM with service account `factory-vm` (made by `mission-control/infra/setup.sh`), or attaches it to an existing VM;
 - copies [`bin/bootstrap-ubuntu.sh`](../bin/bootstrap-ubuntu.sh) over and runs it as root:
   git, python3, gh, caddy, bun, uv, Claude Code, Codex.
@@ -66,15 +66,14 @@ gcloud compute ssh factory-1 $F --command 'sudo -i bash -lc "cd ~/file-to-markdo
 ```bash
 gcloud compute scp bin/gcp/archon-console.sh factory-1:/tmp/ $F
 gcloud compute ssh factory-1 $F --command 'sudo -i bash /tmp/archon-console.sh'
-# then, on the Mac, keep this running and open http://localhost:3090
-gcloud compute start-iap-tunnel factory-1 3090 --local-host-port=localhost:3090 \
-  --zone me-west1-a --project me-sb-dgcp-dpoc-pocyosh-pr
+# then, on the Mac: opens the factory console (localhost:8080) and Archon (localhost:3090)
+bin/gcp/console.sh
 ```
 
 [`bin/gcp/archon-console.sh`](../bin/gcp/archon-console.sh) serves the console from its own
 copy of the pinned Archon (the pinned tree must stay clean) as systemd service
-`archon-console`, sharing `~/.archon` so it shows the factory's runs. Port 3090 is open
-to the IAP range only. `rebuild.sh` does this step too.
+`archon-console`, sharing `~/.archon` so it shows the factory's runs. No firewall rule opens 3090: `bin/gcp/console.sh`
+forwards it over the same IAP SSH connection as the factory console. `rebuild.sh` does this step too.
 
 ## 3. The two logins
 

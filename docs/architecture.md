@@ -99,12 +99,12 @@ Vertex AI is a possible later option per agent.
 |---|---|---|---|
 | **Engine: Archon** (pinned `1cfb8fc5`) | factory-1 | runs the SDLC workflows: triage, build, review, holdout verify, merge gate, deploy; agents in Docker sandboxes; SQLite DB of runs and events | running |
 | **Factory consumer** (`factory/consumer.py`) | factory-1 | doctor, list, run, halt; the schedule that starts laps | running |
-| **Archon console** (`archon serve`) | factory-1 :3090 | Archon's own deep view of one run | running (to move behind the main-node console, see §9) |
+| **Archon console** (`archon serve`) | factory-1 :3090, no firewall rule | Archon's own deep view of one run; reached over the console's SSH connection | running |
 | **archon-bridge** | factory-1 | reads Archon's DB, maps lifecycle events to CloudEvents, publishes them and a heartbeat every 60 s; carries no agent output text | running |
 | **Event bus** | Pub/Sub `factory-events` (+ `factory-events-dlq`, `factory-commands`) | one ordered stream of everything that happens | running |
 | **Writer** (`mission-control-writer`) | Cloud Run, push subscription `factory-events-writer` | validates each event, stores it, updates projections | running |
 | **State store** | Firestore `(default)` | `events`, `runs`, `nodes`, `engines`; next `agents`, `compliance`, `products`, `problems`, `work_items` … | running |
-| **Console** | factory-1, `127.0.0.1` only | operator UI: status, history, live runs, settings, commands | planned ([console-ui-plan.md](console-ui-plan.md)) |
+| **Console** (`mission_control/console`, systemd `factory-console`) | factory-1, unix socket `/run/factory-console/sock`, no TCP | operator UI: shell, overview, live feed now; status screens, settings and commands next | running (UI-0; [console-ui-plan.md](console-ui-plan.md)) |
 | **Command handler** (`mission_control/handler.py`, systemd `mission-control-handler`) | factory-1 | executes commands from `factory-commands` one at a time: deployment apply/start/stop/restart/scale/remove now; halt and settings later. Publishes acknowledged, each step and the outcome | running (R4) |
 | **Agent hosts** | factory-1 (`local`) and sandbox VMs (`vm`) running Docker | run agents and, later, other system parts | factory-1 running; VM hosts planned (Stage R) |
 | **AgentRuntime** (in the command handler) | factory-1 | install hosts; deploy, start, stop, upgrade, roll back, scale, logs; restore after the sweep | port + `fake` + `docker-local` built (`python3 -m mission_control.runtime`); handler planned ([deploy-and-hosts-plan.md](deploy-and-hosts-plan.md)) |
@@ -120,7 +120,7 @@ Vertex AI is a possible later option per agent.
  VPC "default"  subnet default/me-west1 (Private Google Access on)
  ┌──────────────────────────────────────────────────────────────────────────────┐
  │  factory-1  10.208.0.38  e2-standard-2  Ubuntu 24.04  SA factory-vm          │
- │    Archon + consumer + bridge + archon-console(:3090) [+ console, planned]   │
+ │    Archon, consumer, bridge, archon-console(:3090), handler, console (sock)  │
  │                                                                              │
  │    Docker: compliance agent container (planned R2)                           │
  │                                                                              │
@@ -128,7 +128,7 @@ Vertex AI is a possible later option per agent.
  │    from 10.208.0.38; created, installed and deployed from the console        │
  │                                                                              │
  │  Cloud Router factory-router + Cloud NAT factory-nat  (egress: GitHub)       │
- │  Firewall: 35.235.240.0/20 → tcp:22 (IAP SSH)  [tcp:3090 rule to retire]     │
+ │  Firewall: 35.235.240.0/20 → tcp:22 (IAP SSH) only                           │
  └──────────────────────────────────────────────────────────────────────────────┘
   Serverless / managed (survive the sweep):
     Pub/Sub  factory-events, factory-events-dlq, factory-commands

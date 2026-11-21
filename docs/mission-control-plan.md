@@ -95,9 +95,9 @@ UI-6): [console-ui-plan.md](console-ui-plan.md).
 
 | # | Step | Done when | |
 |---|---|---|---|
-| F1 | UI-0.1–0.2: FastAPI console in `mission-control/console/`, systemd unit on factory-1, unix socket, group `factory-operators` | health over the socket on the VM; nothing listens on TCP | ☐ |
-| F2 | UI-0.3–0.4: operator identity (`SO_PEERCRED`) and `bin/gcp/console.sh` tunnel | the header shows the operator; opens from the Mac only with the IAP grant | ☐ |
-| F3 | UI-0.5–0.6: Archon UI proxied, port 3090 rule removed; SSE live updates | new events show within 2 s; direct 3090 refused | ☐ |
+| F1 | UI-0.1–0.2: FastAPI console in `mission-control/console/`, systemd unit on factory-1, unix socket, group `factory-operators` | health over the socket on the VM; nothing listens on TCP | ✅ |
+| F2 | UI-0.3–0.4: operator identity (`SO_PEERCRED`) and `bin/gcp/console.sh` tunnel | the header shows the operator; opens from the Mac only with the IAP grant | ✅ |
+| F3 | UI-0.5–0.6: Archon UI forwarded over the console's SSH connection, port 3090 rule removed; SSE live updates | new events show within 2 s; no 3090 rule | ✅ |
 | F4 | UI-1.1–1.2: Overview and Agents | factory-1 and the compliance pod listed live | ☐ |
 | F5 | UI-1.3–1.4: Projects and Compliance | the converter's PRs with their reports and rules version | ☐ |
 | F6 | UI-1.5: Runs history with retry chains | a rerun shows under its first attempt | ☐ |

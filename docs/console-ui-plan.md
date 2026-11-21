@@ -5,7 +5,7 @@ settings that steer them, and the buttons that act on them. It replaces the earl
 "dashboard on Cloud Run behind Google sign-in" plan, because the owner's rule
 (2026-11-17) is that **everything is used only through the main node**.
 
-Status: plan, 2026-11-17. Architecture: [architecture.md](architecture.md) §9.
+Status: 2026-11-21. UI-0 done and live on factory-1 (`bin/gcp/console.sh`). Architecture: [architecture.md](architecture.md) §9.
 Data and events: [mission-control-design.md](mission-control-design.md). Build steps
 are below and mirrored in [mission-control-plan.md](mission-control-plan.md) (Stage F).
 
@@ -35,7 +35,7 @@ holdout text (never shown).
    bin/gcp/console.sh opens the tunnel   │  console server (FastAPI)             │
    and the browser                       │   reads Firestore (factory-vm SA)     │
                                          │   publishes commands                  │
-                                         │   proxies Archon UI (127.0.0.1:3090)  │
+                                         │   (Archon UI: same SSH, -L 3090)      │
                                          └──────────────────────────────────────┘
 ```
 
@@ -46,8 +46,12 @@ holdout text (never shown).
   logged-in OS Login user, so the server reads the peer's uid (`SO_PEERCRED`) and maps
   it to the Google account. Every command event carries that identity. (Spike UI-0.3
   confirms this; fallback: a per-session token printed by `console.sh`.)
-- **Archon's console** moves behind the same server (`/archon/…` proxied to
-  `127.0.0.1:3090`); the IAP firewall rule for tcp:3090 is removed.
+- **Archon's console** is forwarded by the same SSH connection (`-L 3090:127.0.0.1:3090`)
+  instead of being proxied under `/archon/` (its web app uses root paths, so a sub-path
+  proxy breaks it). The IAP firewall rule for tcp:3090 is removed: only SSH is open.
+- **Who may use it**: the socket is connectable by local users, and the app admits only
+  root and members of `factory-operators` (checked per request from `SO_PEERCRED`).
+  `console.sh` adds the signed-in OS Login admin to the group.
 - The console is **stateless**: everything it shows comes from Firestore, so the
   weekly rebuild of factory-1 loses nothing.
 
@@ -228,12 +232,12 @@ and tests call.
 
 | # | Step | Done when |
 |---|---|---|
-| UI-0.1 | `mission-control/console/` FastAPI app, layout, nav, health route; runs locally against memory adapters | `uvicorn` locally shows the empty shell; unit test for `/api/health` |
-| UI-0.2 | systemd unit `factory-console` on factory-1, unix socket `/run/factory-console/sock`, group `factory-operators` | `curl --unix-socket` on the VM returns health; nothing listens on TCP |
-| UI-0.3 | Spike: operator identity from `SO_PEERCRED` through `ssh -L` to the socket; map uid → OS Login user → Google account | the page header shows the real operator; fallback token documented if it fails |
-| UI-0.4 | `bin/gcp/console.sh`: IAP SSH tunnel to the socket, opens the browser | from the Mac the console opens; from another machine without IAP grant it does not |
-| UI-0.5 | Archon UI proxied at `/archon/`; firewall rule for tcp:3090 removed | Archon pages work through the console; direct IAP to 3090 refused |
-| UI-0.6 | SSE live channel: server-side Firestore listeners push fragments | a new event appears on the page within 2 s without reload |
+| UI-0.1 ✅ | `mission_control/console/` FastAPI app, layout, nav, health route; runs locally against memory adapters (`--demo`) | `uvicorn` locally shows the empty shell; unit test for `/api/health` |
+| UI-0.2 ✅ | systemd unit `factory-console` on factory-1, unix socket `/run/factory-console/sock`, group `factory-operators` | `curl --unix-socket` on the VM returns health; nothing listens on TCP |
+| UI-0.3 ✅ | Spike: operator identity from `SO_PEERCRED` through `ssh -L` to the socket; map uid → OS Login user | the page header shows the real operator. **Works**: the OS Login user and its groups arrive by peer credentials; no fallback needed |
+| UI-0.4 ✅ | `bin/gcp/console.sh`: IAP SSH tunnel to the socket, opens the browser | from the Mac the console opens; from another machine without IAP grant it does not |
+| UI-0.5 ✅ | Archon UI forwarded over the same SSH connection; firewall rule for tcp:3090 removed | Archon answers on localhost:3090 through the tunnel; no 3090 rule exists |
+| UI-0.6 ✅ | SSE live channel: the server polls the newest event (only while a page is open) and pushes fragments | a new event appears on the page within 2 s without reload (measured 0–1 s) |
 
 ### UI-1 Status, read-only (Stage F + Q views)
 
