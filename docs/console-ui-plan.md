@@ -5,7 +5,7 @@ settings that steer them, and the buttons that act on them. It replaces the earl
 "dashboard on Cloud Run behind Google sign-in" plan, because the owner's rule
 (2026-11-17) is that **everything is used only through the main node**.
 
-Status: 2026-11-21. UI-0 done and live on factory-1 (`bin/gcp/console.sh`). Architecture: [architecture.md](architecture.md) §9.
+Status: 2026-11-21. UI-0 and UI-1 done and live on factory-1 (`bin/gcp/console.sh`). Architecture: [architecture.md](architecture.md) §9.
 Data and events: [mission-control-design.md](mission-control-design.md). Build steps
 are below and mirrored in [mission-control-plan.md](mission-control-plan.md) (Stage F).
 
@@ -243,12 +243,12 @@ and tests call.
 
 | # | Step | Done when |
 |---|---|---|
-| UI-1.1 | Overview health tiles and "needs you" list | numbers match Firestore by hand count |
-| UI-1.2 | Agents view (from `agents`, `engines`) | factory-1 and the compliance container both listed live |
-| UI-1.3 | Projects view (from `products`, `compliance`) | the converter with its open PRs and reports |
-| UI-1.4 | Compliance view | every report with rules version, findings, cost |
-| UI-1.5 | Runs view: history, filters, retry chains | a rerun shows under its first attempt |
-| UI-1.6 | Problems view (with Stage F rules) | a forced failure shows and clears |
+| UI-1.1 ✅ | Overview health tiles and "needs you" list | numbers match Firestore by hand count |
+| UI-1.2 ✅ | Agents view (from `agents`, `engines`) | factory-1 and the compliance container both listed live |
+| UI-1.3 ✅ | Projects view (from `products/*.yaml` until the Q1 projection, `compliance`, `runs`) | the converter with its open PRs and reports |
+| UI-1.4 ✅ | Compliance view | every report with rules version, findings, cost |
+| UI-1.5 ✅ | Runs view: history, filters, retry chains | a rerun shows under its first attempt |
+| UI-1.6 ✅ | Problems view; rules derived on read in `console/views.py` (silent engine/agent, halted engine, deployment down/failed, failed or stuck run, compliance error/capped/high) | a forced failure shows and clears (deployment stop → start, 2026-11-21) |
 
 ### UI-2 Settings, commands and audit (Stage M + N1)
 
