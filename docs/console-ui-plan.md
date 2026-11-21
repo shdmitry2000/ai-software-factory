@@ -245,7 +245,7 @@ and tests call.
 |---|---|---|
 | UI-1.1 ✅ | Overview health tiles and "needs you" list | numbers match Firestore by hand count |
 | UI-1.2 ✅ | Agents view (from `agents`, `engines`) | factory-1 and the compliance container both listed live |
-| UI-1.3 ✅ | Projects view (from `products/*.yaml` until the Q1 projection, `compliance`, `runs`) | the converter with its open PRs and reports |
+| UI-1.3 ✅ | Projects view (products files + `products` projection, `compliance`, `runs`; since Stage Q also `pullrequests`, `workitems`, `repos`: open PRs with checks and review at head, issues, base head, git freshness, problems) | the converter with its open PRs and reports |
 | UI-1.4 ✅ | Compliance view | every report with rules version, findings, cost |
 | UI-1.5 ✅ | Runs view: history, filters, retry chains | a rerun shows under its first attempt |
 | UI-1.6 ✅ | Problems view; rules derived on read in `console/views.py` (silent engine/agent, halted engine, deployment down/failed, failed or stuck run, compliance error/capped/high) | a forced failure shows and clears (deployment stop → start, 2026-11-21) |

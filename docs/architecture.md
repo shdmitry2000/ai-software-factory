@@ -112,7 +112,7 @@ Vertex AI is a possible later option per agent.
 | GKE cluster `factory-agents` | – | parked 2026-11-21; scripts kept in `bin/gke/`, not rebuilt after the sweep | parked |
 | **Prompt manager** | git `prompts/` now; MLflow later | versioned, labelled prompts (compliance rules first) | built (file adapter) / planned (service) |
 | **Skill manager** | git plugin marketplace | versioned skills and subagents materialized per lap | planned (Stage T) |
-| **GitHub poller** | main node | PR, push and check events for every product (no public webhook needed) | planned (Stage Q) |
+| **Git poller** (`mission_control/poller.py`, systemd `mission-control-poller`) | factory-1 | every 60 s per product: open PRs, branches, issues and the checks on each open PR head, by GitHub ETags (an unchanged answer is free); publishes `pullrequest.*`, `check.completed`, `branch.*`, `workitem.*` and `codehost.polled`; what it saw is kept in `git_poll/{product}`; reads with root's `gh` login, never writes to GitHub | running (Stage Q) |
 
 ## 5. Deployment view (GCP project `me-sb-dgcp-dpoc-pocyosh-pr`, region me-west1)
 

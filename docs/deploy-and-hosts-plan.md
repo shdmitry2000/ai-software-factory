@@ -3,7 +3,7 @@
 How the factory installs, deploys and runs its parts (agents and system components)
 on the main node and on other servers in the sandbox, all driven from the console.
 
-Status: 2026-11-21. R1–R5 and R7–R9 done and live; R6 waits for the Stage Q poller. The console creates VM hosts, deploys to them, streams logs, upgrades, rolls back and restores the fleet (drill: §10). Replaces the GKE-first approach of Stage O-B and the
+Status: 2026-11-21. R1–R5 and R7–R9 done and live; R6 is next: the Stage Q poller now publishes PR events (live 2026-11-21). The console creates VM hosts, deploys to them, streams logs, upgrades, rolls back and restores the fleet (drill: §10). Replaces the GKE-first approach of Stage O-B and the
 old Stage R (fleet). Architecture: [architecture.md](architecture.md). Console:
 [console-ui-plan.md](console-ui-plan.md).
 
@@ -165,7 +165,7 @@ Wireframes are in [console-ui-plan.md](console-ui-plan.md#hosts-and-deploy).
 | R3 ✅ | `deploy/components/*.yaml`, `deploy/hosts.yaml`, `deploy/deployments.yaml`: schema, loader, tests | the compliance component and the `local` host load; bad files are refused |
 | R4 ✅ | Command handler: `deployment.apply/start/stop/restart/remove`, progress events, schemas | unit tests on the fake; a real apply on factory-1 shows each step as an event |
 | R5 ✅ | `fleet` + `docker-ssh` adapters, `gce.py`: VM without public IP, SA `factory-agent`, SSH only from factory-1 | a throwaway VM is created, installed, runs compliance, is removed; SSH from the Mac to it fails |
-| R6 | Chains: `consumes` creates filtered Pub/Sub subscriptions at deploy; agents can start on events as well as on a timer | opening a PR triggers a compliance report within 1 minute (needs the Stage Q poller) |
+| R6 | Chains: `consumes` creates filtered Pub/Sub subscriptions at deploy; agents can start on events as well as on a timer | opening a PR triggers a compliance report within 1 minute (the poller sends `pullrequest.opened` within about a minute) |
 | R7 ✅ | Logs: tail and follow through the handler (root-only socket `/run/mission-control-handler/logs.sock`, credential values masked) | the console shows the last 200 lines and new lines live |
 | R8 ◐ | `fleet.restore` after the sweep (simulated drill passed; the real weekend drill is next) | weekend drill: one VM host and its agents back with one click, no duplicate reports |
 | R9 ✅ | Upgrade and roll back by digest; keep the last 5 digests per component | a rollback returns the previous digest and the agent keeps working |

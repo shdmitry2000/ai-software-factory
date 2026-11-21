@@ -254,13 +254,13 @@ agent](mission-control-design.md#gke-agents-and-the-compliance-agent).
 
 | # | Step | Done when | |
 |---|---|---|---|
-| Q1 | `products` projection from `products/*.yaml` (`dev.factory.product.registered`) | both the converter and the test product listed | ☐ |
-| Q2 | GitActivity port + contract tests; GitHub **polling** adapter (ETag, 60 s) | contract tests pass against a test repo | ☐ |
-| Q3 | Poller publishes PR, push, check and issue events for every product | opening a PR produces `dev.factory.pr.opened` within 2 minutes | ☐ |
-| Q4 | Product rollups: open PRs, last lap, problems, compliance findings, `git_seen_at` | rollup matches GitHub and Firestore by hand count | ☐ |
-| Q5 | `agents` projection from agent heartbeats (any host) | factory-1 and the compliance container both listed with host and state | ☐ |
-| Q6 | Projects view | every product with its rollups; stale git data marked | ☐ |
-| Q7 | Agents view | each agent's location, state, current work, model and auth method | ☐ |
+| Q1 | `products` projection from `products/*.yaml` (`dev.factory.product.registered`) | both the converter and the test product listed | ☑ (UI-2: the handler registers each file at start) |
+| Q2 | GitActivity port + contract tests; GitHub **polling** adapter (ETag, 60 s) | contract tests pass against a test repo | ☑ 2026-11-21: `adapters/git/github.py` (ETag cache, pagination, 401 refresh, rate limit); contract suite passes on the fake and live against the converter |
+| Q3 | Poller publishes PR, push, check and issue events for every product | opening a PR produces `dev.factory.pullrequest.opened` within 2 minutes | ◐ live 2026-11-21 (`mission-control-poller` on factory-1, every 60 s, root's `gh` login, read-only): first poll published PR #3, 36 branches, the base head; a new PR is the remaining check |
+| Q4 | Product rollups: open PRs, last lap, problems, compliance findings, `git_seen_at` | rollup matches GitHub and Firestore by hand count | ☑ projections `pullrequests`, `workitems`, `repos`; rollups computed on read in `views.products` (open PRs, checks, review at head, issues, branches, base head, problems, git freshness) |
+| Q5 | `agents` projection from agent heartbeats (any host) | factory-1 and the compliance container both listed with host and state | ☑ (UI-1.2) |
+| Q6 | Projects view | every product with its rollups; stale git data marked | ☑ live on factory-1; problems `git.error`, `git.stale`, `pullrequest.checks_failed`; reviews of merged or closed PRs are no longer problems |
+| Q7 | Agents view | each agent's location, state, current work, model and auth method | ☑ (UI-1.2) |
 
 ## Stage R — Hosts, deploy and agent chains (from the console)
 

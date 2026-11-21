@@ -137,12 +137,14 @@ their APIs are off and come back when re-enabled. There is no exemption, so the 
 on a weekly cycle:
 
 - **Nothing lives only on the VM.** The app repo holds its committed factory files
-  (`MISSION.md`, `harness/`, `.factory/`), Firestore holds history and the bridge cursor,
+  (`MISSION.md`, `harness/`, `.factory/`), Firestore holds history, the bridge cursor and what the git poller last saw,
   and `.factory-secrets/` in this repo folder holds the two logins.
 - **Friday before 21:00 UTC:** `python3 factory/consumer.py halt` on the VM, so no lap is cut
   off mid-run. Open PRs survive on GitHub; the next lap picks them up.
 - **Sunday after ~01:00 UTC, or Monday:** one command re-enables the APIs, re-applies the
-  writer's wiring and rebuilds the VM, Archon console, bridge and logins (~25 min):
+  writer's wiring and rebuilds the VM, Archon console, bridge, command handler, git poller,
+  console and logins (~25 min). The poller needs root's `gh` login (`push-logins.sh`); until
+  it is there it polls without a token every 10 min (public repositories only):
 
   ```bash
   bin/gcp/rebuild.sh
