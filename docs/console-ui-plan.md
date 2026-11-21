@@ -200,11 +200,11 @@ Every action is a command, never a direct write:
 | Halt / unhalt engine | `engine.halt` / `engine.unhalt` | handler → `consumer.py halt` | `engine.halted` / `engine.unhalted` |
 | Rerun / cancel run | `run.rerun` / `run.cancel` | handler → Archon | `run.started` (chained) / `run.cancelled` |
 | Approve merge | `approval.resolve` | handler → Archon | `approval.resolved` |
-| Add VM host / install / remove | `host.create` / `host.install` / `host.remove` | handler → AgentRuntime (`gce-vm`) | `host.created`, `deploy.step`, `host.installed` |
-| Deploy / upgrade / roll back | `deployment.apply {component, host, digest, replicas}` | handler → AgentRuntime (`docker-local`, `docker-ssh`) | `deploy.step` per step, `deployment.applied` |
+| Add VM host / install / remove | `host.create` / `host.install` / `host.remove` | handler → AgentRuntime (`gce-vm`) | `host.created`, `deployment.step`, `host.installed` |
+| Deploy / upgrade / roll back | `deployment.apply {component, host, digest, replicas}` | handler → AgentRuntime (`docker-local`, `docker-ssh`) | `deployment.step` per step, `deployment.changed` |
 | Start / stop / restart / scale / remove | `deployment.start` … `deployment.remove` | handler → AgentRuntime | `deployment.changed`, `agent.heartbeat` |
 | Logs | `deployment.logs {tail, follow}` (read-only, not stored) | handler streams to the console | – |
-| Restore after the sweep | `fleet.restore` | handler: recreate hosts, reinstall, reapply | `host.installed`, `deployment.applied` |
+| Restore after the sweep | `fleet.restore` | handler: recreate hosts, reinstall, reapply | `host.installed`, `deployment.changed` |
 | Drain an agent | `agent.drain` | handler | `agent.heartbeat` (state draining) |
 | New prompt version / move label | `prompt.propose {name, text}` / `prompt.label {name, label, version}` | PromptRegistry adapter (git: opens a PR; service: needs approver) | `prompt.version.created`, `prompt.label.moved` |
 | Re-review a PR | `compliance.rereview {product, pr}` | compliance agent | `compliance.reported` |

@@ -105,7 +105,7 @@ Vertex AI is a possible later option per agent.
 | **Writer** (`mission-control-writer`) | Cloud Run, push subscription `factory-events-writer` | validates each event, stores it, updates projections | running |
 | **State store** | Firestore `(default)` | `events`, `runs`, `nodes`, `engines`; next `agents`, `compliance`, `products`, `problems`, `work_items` … | running |
 | **Console** | factory-1, `127.0.0.1` only | operator UI: status, history, live runs, settings, commands | planned ([console-ui-plan.md](console-ui-plan.md)) |
-| **Command handler** | factory-1 | executes console commands (halt, settings, scale) from `factory-commands` | planned |
+| **Command handler** (`mission_control/handler.py`, systemd `mission-control-handler`) | factory-1 | executes commands from `factory-commands` one at a time: deployment apply/start/stop/restart/scale/remove now; halt and settings later. Publishes acknowledged, each step and the outcome | running (R4) |
 | **Agent hosts** | factory-1 (`local`) and sandbox VMs (`vm`) running Docker | run agents and, later, other system parts | factory-1 running; VM hosts planned (Stage R) |
 | **AgentRuntime** (in the command handler) | factory-1 | install hosts; deploy, start, stop, upgrade, roll back, scale, logs; restore after the sweep | port + `fake` + `docker-local` built (`python3 -m mission_control.runtime`); handler planned ([deploy-and-hosts-plan.md](deploy-and-hosts-plan.md)) |
 | **Compliance agent** | container (`agents/compliance`, image `mission-control/agent`) | advisory review of every open PR head against versioned rules | built; first deploy on factory-1 (R2) |
@@ -247,8 +247,8 @@ The GKE identities (`factory-gke-node`, KSA `agents/compliance`) are parked with
    ─▶ console ─▶ command.issued ─▶ handler on factory-1 ─▶ AgentRuntime
         local: docker on factory-1      vm: docker over SSH (internal IP)
    ─▶ pull by digest → env file over stdin → Pub/Sub subscriptions (chain) → run
-      → first heartbeat;  each step an event dev.factory.deploy.step
-   ─▶ deployment.applied ─▶ projections hosts/, deployments/, agents/ ─▶ console live
+      → first heartbeat;  each step an event dev.factory.deployment.step
+   ─▶ deployment.changed ─▶ projections commands/, deployments/, agents/ ─▶ console live
 ```
 
 Details: [deploy-and-hosts-plan.md](deploy-and-hosts-plan.md).
@@ -286,7 +286,7 @@ and is linked per run. Full plan: [console-ui-plan.md](console-ui-plan.md).
 | `engines/{engine}` | engine heartbeat and bridge cursor | writer / bridge | running |
 | `agents/{agent_id}` | agent instance: host, state, model, LLM method, spend | writer | built |
 | `hosts/{host}` | host: kind, state, health, what runs there | writer | planned (R) |
-| `deployments/{id}` | component, host, digest, replicas, state, last steps | writer | planned (R) |
+| `deployments/{id}` | latest state: host, digest, instances, last action and command | writer | running (R4) |
 | `compliance/{product}__{pr}` | latest advisory report of a PR | writer | built |
 | `products/{product}` | settings (seeded from `products/*.yaml`, changed by console) + rollups | writer | planned (Q) |
 | `problems/{id}` | open/resolved problems | rules | planned (F) |
@@ -294,7 +294,7 @@ and is linked per run. Full plan: [console-ui-plan.md](console-ui-plan.md).
 | `runs/{run}/messages/{seq}` | agent-to-agent messages (holdouts: metadata) | writer | planned (S) |
 | `workflows/{name}@{digest}` | workflow definitions | writer | planned (S) |
 | `memory_index/{product}/{doc}` | knowledge documents metadata | writer | planned (U) |
-| `commands/{id}` | console commands and their outcome | writer | planned (M) |
+| `commands/{id}` | every command: action, target, who, reason, accepted/refused, steps, outcome | writer | running (R4) |
 
 Event types are listed in [`mission-control/schema/types.md`](../mission-control/schema/types.md)
 (closed list; data schemas in `data.v1.json`).
