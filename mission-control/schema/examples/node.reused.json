@@ -1,0 +1,12 @@
+{
+  "specversion": "1.0",
+  "id": "archon:9c2b7e11-0d3f-4a8e-b6c5-1f2e3d4c5b6a",
+  "source": "factory://factory-1/archon",
+  "type": "dev.factory.node.reused",
+  "subject": "run/8f3c21/node/pick",
+  "time": "2026-11-15T12:04:03Z",
+  "datacontenttype": "application/json",
+  "factoryengine": "factory-1",
+  "factoryrun": "8f3c21",
+  "data": {"workflow": "archon-loop", "node": "pick", "attempt": 2, "from_attempt": 1}
+}

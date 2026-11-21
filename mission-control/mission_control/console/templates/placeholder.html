@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}{{ label }} · Factory console{% endblock %}
+{% block main %}
+<h1>{{ label }}</h1>
+<section class="card"><p>This screen arrives in step <b>{{ stage }}</b> of the console plan
+(<span class="mono">docs/console-ui-plan.md</span>).</p></section>
+{% endblock %}

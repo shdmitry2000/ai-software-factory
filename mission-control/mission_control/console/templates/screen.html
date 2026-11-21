@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ label }} · Factory console{% endblock %}
+{% block main %}
+<h1>{{ label }}</h1>
+<div id="activity" aria-live="polite"></div>
+<div id="panel"></div>
+<div id="screen" hx-get="{{ frag }}" hx-trigger="sse:changed[!document.querySelector('#screen input:focus, #screen select:focus')] throttle:5s" hx-swap="innerHTML">
+{% include body %}
+</div>
+{% endblock %}

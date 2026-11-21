@@ -371,6 +371,8 @@ A factory that only runs while your laptop is open is a demo. It wants a Linux b
 that never sleeps. Any provider. Use the same setup prompt and tell your agent
 which server and application repo to use. [`docs/server-cheat-sheet.md`](docs/server-cheat-sheet.md)
 has every prompt for the whole server setup, in order, from the SSH key to the timer.
+The GCP setup used here (main node, mission control, agents on GKE, console) is
+described in [`docs/architecture.md`](docs/architecture.md).
 
 For Ubuntu, the agent can inspect and run [`bin/bootstrap-ubuntu.sh`](bin/bootstrap-ubuntu.sh)
 to install the toolchain, then help with GitHub and provider sign-in. Run the

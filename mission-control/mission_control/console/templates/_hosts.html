@@ -1,0 +1,56 @@
+{% from "_macros.html" import status, act %}
+{% if spec_error %}<section class="card bad">Deploy files: {{ spec_error }}</section>{% endif %}
+{% if can_act %}
+<section class="card">
+  <div class="cardhead"><h2>Fleet</h2><span class="muted">{{ n_vms }} VM host(s) · VMs are deleted by the weekend sweep; Restore brings back every host and deployment</span></div>
+  <form class="settings-form" hx-post="/act" hx-target="#activity" hx-swap="afterbegin" hx-on::after-request="if(event.detail.successful) this.reset()">
+    <input type="hidden" name="action" value="host.create">
+    <label>New VM host <span class="muted">agent- then letters, digits, dashes</span>
+      <input name="target" required pattern="agent-[a-z0-9][a-z0-9-]{0,30}" placeholder="agent-1"></label>
+    <label>Machine type
+      <select name="arg_machine_type">{% for m, what in machine_types.items() %}<option value="{{ m }}">{{ m }}: {{ what }}</option>{% endfor %}</select></label>
+    <label class="wide">Why <input name="reason" required minlength="3" placeholder="goes in the audit log"></label>
+    <button>Create and install</button>
+  </form>
+  <p class="muted">The VM has no public IP; only factory-1 can reach it (SSH). It runs as the <span class="mono">factory-agent</span> service account. Creating and installing takes about 3 minutes; follow the steps above.</p>
+  {{ act('fleet.restore', engine, 'Restore all hosts and deployments', can_act, confirm='Recreate every VM host and reapply every deployment at its pinned image?') }}
+</section>
+{% endif %}
+{% for h in hosts %}
+<section class="card">
+  <div class="cardhead">
+    <span class="dot {{ 'on' if h.fresh and h.state == 'healthy' else 'off' }}"></span>
+    <h2>{{ h.host }}</h2>
+    <span class="chip">{{ h.kind or '?' }}</span>
+    {{ status(h.state) }}
+    <span class="muted">{% if h.host == 'local' %}main node (factory-1){% endif %}{% if h.address %} · {{ h.address }}{% endif %} · heartbeat {{ h.ago }}</span>
+    {% if not h.in_git and h.kind %}<span class="chip warn" title="created from the console, not in deploy/hosts.yaml">console</span>{% endif %}
+  </div>
+  {% set x = h.health %}
+  <div class="facts">
+    <div><span class="muted">Docker</span><b class="mono">{{ x.docker or '–' }}</b></div>
+    <div><span class="muted">CPU</span><b>{{ x.cpus or '–' }} vCPU</b> <span class="muted">load {{ x.load1 if x.get('load1') is not none else '–' }}</span></div>
+    <div><span class="muted">Memory</span><b>{{ '%.0f'|format(x.mem_used_pct) ~ '%' if x.get('mem_used_pct') is not none else '–' }}</b> <span class="muted">of {{ ((x.mem_total_mb or 0) / 1024)|round(1) }} GB</span></div>
+    <div><span class="muted">Disk</span><b class="{{ 'bad' if (x.disk_used_pct or 0) >= 85 else '' }}">{{ '%.0f'|format(x.disk_used_pct) ~ '%' if x.get('disk_used_pct') is not none else '–' }}</b> <span class="muted">of {{ x.disk_total_gb or '–' }} GB</span></div>
+    <div><span class="muted">Containers</span><b>{{ x.containers if x.get('containers') is not none else '–' }}</b></div>
+  </div>
+  {% if x.error %}<div class="bad">{{ x.error }}</div>{% endif %}
+  {% if h.doc.error %}<div class="bad">last {{ h.doc.last_action }}: {{ h.doc.error }}</div>{% endif %}
+  <h3>Runs here</h3>
+  {% for d in h.deployments %}
+  <div class="row">{{ status(d.state) }} <b class="mono">{{ d.deployment }}</b>
+    <span class="muted mono">{{ (d.digest or '')[7:19] }}</span>
+    <span class="muted">{% for i in d.instances or [] %}{{ i.name }} {{ i.state }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
+    <a href="/deploy">manage</a></div>
+  {% else %}<div class="muted">Nothing deployed here.</div>{% endfor %}
+  {% if can_act %}
+  <div class="row">
+    <button hx-get="/panels/deploy?host={{ h.host }}" hx-target="#panel">Deploy to {{ h.host }}…</button>
+    {% if h.kind == 'vm' %}
+      {{ act('host.install', h.host, 'Reinstall', can_act) }}
+      {{ act('host.remove', h.host, 'Remove host', can_act, confirm='Remove ' ~ h.host ~ '? Its deployments are removed and the VM is deleted.', danger=true) }}
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+{% else %}<section class="card muted">No hosts.</section>{% endfor %}

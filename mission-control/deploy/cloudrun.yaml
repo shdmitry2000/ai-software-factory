@@ -1,0 +1,9 @@
+# Adapters for the Cloud Run services. Values come from the service's environment.
+ports:
+  store:
+    adapter: firestore
+    project: ${GCP_PROJECT}
+    prefix: ${MC_PREFIX:-}
+  bus:
+    adapter: pubsub
+    project: ${GCP_PROJECT}

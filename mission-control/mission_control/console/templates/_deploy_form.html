@@ -1,0 +1,30 @@
+<section class="card panel">
+  <div class="cardhead"><h2>Deploy</h2><span class="spacer"></span><button class="danger" type="button" onclick="this.closest('#panel').innerHTML=''">Close</button></div>
+  {% if spec_error %}<div class="bad">Deploy files: {{ spec_error }}</div>
+  {% elif not can_act %}<div class="muted">This console is read-only.</div>
+  {% else %}
+  <form class="settings-form" hx-post="/deploy" hx-target="#activity" hx-swap="afterbegin"
+        hx-on::after-request="if(event.detail.successful) this.closest('#panel').innerHTML=''">
+    <label>Component
+      <select name="component" required>{% for c in spec.components.values()|sort(attribute='name') %}
+        <option value="{{ c.name }}" {% if c.name == component %}selected{% endif %}>{{ c.name }} ({{ c.llm }})</option>{% endfor %}</select></label>
+    <label>Host
+      <select name="host" required>{% for h in hosts %}
+        <option value="{{ h.host }}" {% if h.host == host %}selected{% endif %}>{{ h.host }} ({{ h.kind }}, {{ h.state }})</option>{% endfor %}</select></label>
+    <label>Product <span class="muted">for agents that work on one product</span>
+      <select name="product"><option value="">(as in deploy files)</option>{% for p in products %}<option>{{ p }}</option>{% endfor %}</select></label>
+    <label>Replicas <input name="replicas" type="number" min="0" max="20" placeholder="as in deploy files"></label>
+    <label class="wide">Image
+      <select name="image">
+        <option value="build">build the main node's checkout now ({{ source or 'HEAD' }})</option>
+        <option value="pinned">the pinned or last deployed digest</option>
+        {% set seen = [] %}
+        {% for d in deploy.deployments %}{% for r in ([{'digest': d.digest}] if d.digest else []) + d.rollback %}{% if r.digest and r.digest not in seen %}{% set _ = seen.append(r.digest) %}
+        <option value="{{ r.digest }}">{{ r.digest[7:19] }} (ran on {{ d.id }})</option>{% endif %}{% endfor %}{% endfor %}
+      </select></label>
+    <label class="wide">Why <input name="reason" required minlength="3" placeholder="goes in the audit log"></label>
+    <button>Deploy</button>
+  </form>
+  <p class="muted">Deploying records the choice as this deployment's desired state (shown as differing from git until a PR changes <span class="mono">deploy/deployments.yaml</span>). Restore after the weekend sweep reapplies it.</p>
+  {% endif %}
+</section>

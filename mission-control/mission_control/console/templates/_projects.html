@@ -1,0 +1,85 @@
+{% from "_macros.html" import status %}
+{% for p in products %}
+<section class="card">
+  <div class="cardhead">
+    <h2>{{ p.name }}</h2>
+    <span class="muted mono">{{ p.repo }}</span>
+  </div>
+  <div class="facts">
+    <div><span class="muted">Base branch</span><b class="mono">{{ p.base_branch }}</b>{% if p.base_head %} <span class="muted mono">@{{ p.base_head }} · {{ p.base_ago }}</span>{% endif %}</div>
+    <div><span class="muted">Open PRs</span><b>{{ p.open_prs }}</b> <span class="muted">{% if p.failing_checks %}{{ p.failing_checks }} with failing checks · {% endif %}{{ p.unreviewed }} not reviewed at head · {{ p.findings }} findings</span></div>
+    <div><span class="muted">Open issues</span><b>{{ p.open_issues if p.polled else '–' }}</b>{% if p.polled %} <span class="muted">{{ p.branches }} branches{% if p.last_push_ago %} · last push {{ p.last_push_ago }}{% endif %}</span>{% endif %}</div>
+    <div><span class="muted">Compliance</span><b>{{ p.compliance.mode }}</b> <span class="muted">rules {{ p.compliance.rules }} @ {{ p.compliance.label }} · cap ${{ p.compliance.daily_cap_usd }}/day</span></div>
+    <div><span class="muted">Last run</span>{% if p.last_run %}{{ status(p.last_run.status) }} <span class="muted">{{ p.last_run.workflow }} · {{ p.last_run.ago }}</span>{% else %}<span class="muted">none yet</span>{% endif %}</div>
+    <div><span class="muted">Problems</span>{% if p.problems %}<a href="/problems"><b>{{ p.problems }}</b></a>{% else %}<b>0</b>{% endif %}</div>
+    <div><span class="muted">Git data</span>{% if not p.polled %}<span class="chip warn">not polled yet</span>{% elif p.git_error %}<span class="chip bad">read failed</span> <span class="muted">{{ p.git_error }}</span>{% elif p.git_stale %}<span class="chip warn">stale</span> <span class="muted">read {{ p.git_seen_ago }}</span>{% else %}<b>fresh</b> <span class="muted">read {{ p.git_seen_ago }}{% if p.rate %} · rate {{ p.rate }}{% endif %}</span>{% endif %}</div>
+  </div>
+  <details class="settings"{% if p.history %} open{% endif %}><summary>Settings{% if p.overrides %} <span class="muted">({{ p.overrides|length }} changed from the console)</span>{% endif %}</summary>
+  {% if can_act %}
+  <form class="settings-form" hx-post="/settings/{{ p.name }}" hx-target="#activity" hx-swap="afterbegin">
+    <label>Base branch <span class="muted">new PRs target it from the next lap; open PRs keep theirs</span>
+      <input name="new:base_branch" value="{{ p.base_branch }}" required></label>
+    <input type="hidden" name="old:base_branch" value="{{ p.base_branch }}">
+    <label>Compliance mode
+      <select name="new:compliance.mode">{% for m in p.modes %}<option {% if m == p.compliance.mode %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></label>
+    <input type="hidden" name="old:compliance.mode" value="{{ p.compliance.mode }}">
+    <label>Rules label <span class="muted">which version of {{ p.compliance.rules }} reviews use</span>
+      <select name="new:compliance.label">{% for l in p.labels %}<option {% if l == p.compliance.label %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label>
+    <input type="hidden" name="old:compliance.label" value="{{ p.compliance.label }}">
+    <label>Daily cap (USD) <span class="muted">reviews stop for the day at this spend</span>
+      <input name="new:compliance.daily_cap_usd" type="number" min="0" max="100" step="0.5" value="{{ p.compliance.daily_cap_usd }}"></label>
+    <input type="hidden" name="old:compliance.daily_cap_usd" value="{{ p.compliance.daily_cap_usd }}">
+    <label class="wide">Why <input name="reason" required minlength="3" placeholder="goes in the audit log"></label>
+    <button>Save changes</button>
+  </form>
+  {% endif %}
+  {% for f, o in p.overrides.items() %}<div class="muted">{{ f }} set from the console by {{ o.who }} {{ o.ago }}</div>{% endfor %}
+  {% if p.history %}
+  <div class="scroll"><table class="compact">
+    <thead><tr><th>When</th><th>Who</th><th>Setting</th><th>From</th><th>To</th><th>Why</th></tr></thead>
+    <tbody>{% for h in p.history %}<tr><td class="nowrap">{{ h.ago }}</td><td>{{ h.who }}</td><td class="mono">{{ h.field }}</td><td class="mono">{{ h.old }}</td><td class="mono">{{ h.new }}</td><td>{{ h.reason }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+  </details>
+  <h3>Open pull requests</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>PR</th><th>Title</th><th>Base</th><th>Head</th><th>Checks</th><th>Compliance</th><th>Findings</th><th>Opened</th></tr></thead>
+    <tbody>
+    {% for x in p.pulls %}{% set r = x.report %}
+    <tr><td><a href="https://github.com/{{ p.repo }}/pull/{{ x.pr }}" target="_blank" rel="noopener">#{{ x.pr }}</a>{% if x.draft %} <span class="chip">draft</span>{% endif %}</td>
+      <td>{{ x.title or '' }}{% if x.author %} <span class="muted">· {{ x.author }}</span>{% endif %}</td>
+      <td class="mono">{{ x.base or '' }}{% if x.base and x.base != p.base_branch %} <span class="chip warn" title="not the product's base branch">≠ {{ p.base_branch }}</span>{% endif %}</td>
+      <td class="mono">{{ x.short_head }}</td>
+      <td>{% if x.checks.state == 'none' %}<span class="muted">none</span>{% elif x.checks.state == 'failing' %}<span class="chip bad" title="{{ x.checks.failed|join(', ') }}">{{ x.checks.failed|length }} failing</span> <span class="muted">of {{ x.checks.total }}</span>{% else %}<span class="chip {{ 'good' if x.checks.state == 'passing' else '' }}">{{ x.checks.passed }}/{{ x.checks.total }} passed</span>{% endif %}</td>
+      <td>{% if r %}{{ status(r.status) }}{% if x.review == 'outdated' %} <span class="chip warn" title="reviewed {{ r.short_head }}; the head moved">older head</span>{% endif %}{% else %}<span class="muted">not reviewed</span>{% endif %}</td>
+      <td>{% if r %}{{ r.n_findings }}{% if r.top_severity %} <span class="muted">top {{ r.top_severity }}</span>{% endif %}{% endif %}</td>
+      <td class="nowrap">{{ x.ago }}</td></tr>
+    {% else %}<tr><td colspan="8" class="muted">No open pull requests.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {% if p.closed_pulls %}
+  <details><summary>Recently closed <span class="muted">({{ p.closed_pulls|length }})</span></summary>
+  <div class="scroll"><table class="compact">
+    <thead><tr><th>PR</th><th>Title</th><th>Outcome</th><th>When</th></tr></thead>
+    <tbody>{% for x in p.closed_pulls %}<tr><td><a href="https://github.com/{{ p.repo }}/pull/{{ x.pr }}" target="_blank" rel="noopener">#{{ x.pr }}</a></td><td>{{ x.title or '' }}</td><td>{{ status(x.state) }}</td><td class="nowrap">{{ x.closed_ago }}</td></tr>{% endfor %}</tbody>
+  </table></div></details>
+  {% endif %}
+  {% if p.issues %}
+  <h3>Open issues</h3>
+  <div class="scroll"><table class="compact">
+    <thead><tr><th>Issue</th><th>Title</th><th>Labels</th><th>Opened</th></tr></thead>
+    <tbody>{% for w in p.issues %}<tr><td><a href="https://github.com/{{ p.repo }}/issues/{{ w.number }}" target="_blank" rel="noopener">#{{ w.number }}</a></td><td>{{ w.title or '' }}</td><td>{% for l in w.labels or [] %}<span class="chip">{{ l }}</span> {% endfor %}</td><td class="nowrap">{{ w.ago }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% if p.open_issues > p.issues|length %}<p class="muted">and {{ p.open_issues - p.issues|length }} more on GitHub.</p>{% endif %}
+  {% endif %}
+  {% if p.runs %}
+  <h3>Recent runs</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Run</th><th>Workflow</th><th>Status</th><th>Started</th><th>Took</th></tr></thead>
+    <tbody>{% for r in p.runs %}<tr><td class="mono"><a href="/runs/{{ r.run }}">{{ r.run[:12] }}</a></td><td>{{ r.workflow }}</td><td>{{ status(r.status) }}</td><td class="nowrap">{{ r.ago }}</td><td>{{ r.took }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+</section>
+{% else %}
+<section class="card"><p class="muted">No products in <span class="mono">products/</span>.</p></section>
+{% endfor %}

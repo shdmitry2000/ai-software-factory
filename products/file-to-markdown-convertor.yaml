@@ -1,0 +1,10 @@
+# Seed settings for the converter. The console can change them later
+# (dev.factory.product.updated); the products projection then holds the current values.
+repo: shdmitry2000/file-to-markdown-convertor
+codehost: github
+base_branch: main          # owner, 2026-11-17: PRs target main; changeable per product
+compliance:
+  mode: advisory           # reports only; never blocks a merge
+  rules: compliance/rules  # PromptRegistry name
+  label: production
+  daily_cap_usd: 1.0       # reviews stop and a problem opens when reached

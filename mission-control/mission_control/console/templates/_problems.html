@@ -1,0 +1,15 @@
+{% from "_macros.html" import act %}
+<p class="muted">Derived live from engines, agents, deployments, runs and compliance reports (rules in <span class="mono">mission_control/console/views.py</span>). Acknowledging keeps a problem listed but takes it off “Needs you” until it happens again; resolving hides this occurrence.</p>
+<section class="card">
+  {% for p in problems %}
+  <div class="problem {{ p.severity }}{% if p.acked_by %} acked{% endif %}">
+    <span class="chip sev-{{ p.severity }}">{{ p.severity }}</span>
+    <div><a href="{{ p.link or '#' }}"><b>{{ p.title }}</b></a><div class="muted">{{ p.detail }}{% if p.since %} · since {{ p.since[:19]|replace('T', ' ') }} UTC{% endif %}</div>
+      {% if p.acked_by %}<div class="muted">acknowledged by {{ p.acked_by }}: {{ p.ack_reason }}</div>{% endif %}
+      <div class="row">{% if not p.acked_by %}{{ act('problem.ack', p.id, 'Acknowledge', can_act, extra={'since': p.since}) }}{% endif %}
+        {{ act('problem.resolve', p.id, 'Resolve', can_act, extra={'since': p.since}) }}</div>
+    </div>
+    <span class="mono muted">{{ p.kind }}</span>
+  </div>
+  {% else %}<p class="ok">No problems.</p>{% endfor %}
+</section>

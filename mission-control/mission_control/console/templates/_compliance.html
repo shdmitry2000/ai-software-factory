@@ -1,0 +1,17 @@
+{% from "_macros.html" import status, filters %}
+{{ filters('compliance', q, options) }}
+<section class="card">
+  <div class="scroll"><table>
+    <thead><tr><th>Product</th><th>PR</th><th>Head</th><th>Status</th><th>Findings</th><th>Rules</th><th>Model</th><th>Cost</th><th>Reviewed</th></tr></thead>
+    <tbody>
+    {% for r in reports %}
+    <tr><td>{{ r.product }}</td><td>#{{ r.pr }}</td><td class="mono">{{ r.short_head }}</td><td>{{ status(r.status) }}</td>
+      <td>{% if r.findings %}<details><summary>{{ r.n_findings }} (top {{ r.top_severity }})</summary>
+        <ul class="findings">{% for f in r.findings %}<li><span class="chip sev-{{ f.severity }}">{{ f.severity }}</span> <b class="mono">{{ f.rule }}</b> {{ f.title }}{% if f.file %} <span class="muted mono">{{ f.file }}{% if f.line %}:{{ f.line }}{% endif %}</span>{% endif %}{% if f.detail %}<div class="muted">{{ f.detail }}</div>{% endif %}</li>{% endfor %}</ul>
+      </details>{% else %}0{% endif %}{% if r.error %}<div class="muted">{{ r.error }}</div>{% endif %}</td>
+      <td class="mono">v{{ r.rules_version }} · {{ r.rules_count }}</td><td class="mono">{{ r.model or '' }}</td>
+      <td class="mono">${{ '%.4f'|format(r.cost_usd or 0) }}</td><td class="nowrap">{{ r.ago }}</td></tr>
+    {% else %}<tr><td colspan="9" class="muted">No reports{% if q.values()|select|list %} match these filters{% endif %}.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</section>

@@ -1,0 +1,26 @@
+{
+  "specversion": "1.0",
+  "id": "agent:compliance-7f9c:2026-11-17T12:00:00Z",
+  "source": "factory://compliance-7f9c/compliance-agent",
+  "type": "dev.factory.agent.heartbeat",
+  "subject": "agent/compliance-7f9c",
+  "time": "2026-11-17T12:00:00Z",
+  "datacontenttype": "application/json",
+  "factoryengine": "compliance-7f9c",
+  "data": {
+    "agent_id": "compliance-7f9c",
+    "pool": "compliance",
+    "kind": "compliance",
+    "location": "gke:factory-agents/compliance-7f9c",
+    "state": "idle",
+    "products": [
+      "file-to-markdown-convertor"
+    ],
+    "model": "claude-haiku-5-5",
+    "tier": "small",
+    "auth_method": "vertex",
+    "version": "sha256:0f1e2d",
+    "spent_usd_today": 0.0,
+    "reports_today": 3
+  }
+}

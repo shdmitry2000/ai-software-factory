@@ -1,0 +1,19 @@
+{
+  "specversion": "1.0",
+  "id": "product-updated:d00dfeed1234",
+  "source": "factory://factory-1/command-handler",
+  "type": "dev.factory.product.updated",
+  "subject": "product/file-to-markdown-convertor",
+  "time": "2026-11-21T18:00:00Z",
+  "datacontenttype": "application/json",
+  "factoryengine": "factory-1",
+  "data": {
+    "product": "file-to-markdown-convertor",
+    "field": "compliance.daily_cap_usd",
+    "old": 1.0,
+    "new": 2.0,
+    "who": "operator",
+    "reason": "more PRs this week",
+    "command_id": "d00dfeed1234"
+  }
+}

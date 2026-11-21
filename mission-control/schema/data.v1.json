@@ -1,0 +1,1774 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://factory.dev/schema/data.v1.json",
+  "title": "Factory event data, per type",
+  "description": "One definition per event type, keyed by the type without the dev.factory. prefix. A type listed in types.md but not here may not be published yet.",
+  "$defs": {
+    "agent": {
+      "type": "object",
+      "required": [
+        "provider"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "tier": {
+          "enum": [
+            "small",
+            "medium",
+            "large"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "failure_class": {
+      "enum": [
+        "fatal",
+        "transient",
+        "unknown",
+        "timeout",
+        "exec_failed",
+        "output_contract",
+        "max_iterations",
+        "child_failed",
+        "cancelled",
+        "config",
+        "infrastructure"
+      ]
+    },
+    "run_ref": {
+      "type": "object",
+      "required": [
+        "workflow"
+      ],
+      "properties": {
+        "workflow": {
+          "type": "string"
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "node_ref": {
+      "type": "object",
+      "required": [
+        "workflow",
+        "node"
+      ],
+      "properties": {
+        "workflow": {
+          "type": "string"
+        },
+        "node": {
+          "type": "string"
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "text": {
+      "type": "string",
+      "maxLength": 16384
+    },
+    "run.started": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/run_ref"
+        }
+      ],
+      "properties": {
+        "inputs": {
+          "type": "object",
+          "description": "Workflow inputs, secrets and holdout paths removed"
+        },
+        "trigger": {
+          "enum": [
+            "schedule",
+            "manual",
+            "command",
+            "child"
+          ]
+        }
+      }
+    },
+    "run.completed": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/run_ref"
+        }
+      ],
+      "required": [
+        "duration_ms"
+      ],
+      "properties": {
+        "outcome": {
+          "enum": [
+            "succeeded",
+            "failed"
+          ]
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokens": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "run.failed": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/run_ref"
+        }
+      ],
+      "required": [
+        "failure_class"
+      ],
+      "properties": {
+        "failure_class": {
+          "$ref": "#/$defs/failure_class"
+        },
+        "failed_node": {
+          "type": "string"
+        },
+        "summary": {
+          "$ref": "#/$defs/text"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "run.cancelled": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/run_ref"
+        }
+      ],
+      "properties": {
+        "by": {
+          "type": "string"
+        },
+        "reason": {
+          "$ref": "#/$defs/text"
+        }
+      }
+    },
+    "run.paused": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/run_ref"
+        }
+      ],
+      "required": [
+        "waiting_for"
+      ],
+      "properties": {
+        "waiting_for": {
+          "enum": [
+            "ci",
+            "usage_limit",
+            "approval",
+            "other"
+          ]
+        },
+        "detail": {
+          "$ref": "#/$defs/text"
+        }
+      }
+    },
+    "run.resumed": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/run_ref"
+        }
+      ],
+      "required": [
+        "attempt"
+      ],
+      "properties": {
+        "reused_nodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "run.abandoned": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/run_ref"
+        }
+      ],
+      "required": [
+        "silent_for_s"
+      ],
+      "properties": {
+        "silent_for_s": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "branch_kept": {
+          "type": "string"
+        }
+      }
+    },
+    "run.lost": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/run_ref"
+        }
+      ],
+      "required": [
+        "last_heartbeat"
+      ],
+      "properties": {
+        "last_heartbeat": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "graph.declared": {
+      "type": "object",
+      "required": [
+        "workflow",
+        "nodes",
+        "edges"
+      ],
+      "properties": {
+        "workflow": {
+          "type": "string"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "from",
+              "to"
+            ],
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              },
+              "condition": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "node.started": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/node_ref"
+        }
+      ],
+      "properties": {
+        "agent": {
+          "$ref": "#/$defs/agent"
+        },
+        "sandbox": {
+          "type": "string",
+          "pattern": "^(container|worktree|none):.*$"
+        }
+      }
+    },
+    "node.completed": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/node_ref"
+        }
+      ],
+      "required": [
+        "duration_ms"
+      ],
+      "properties": {
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "summary": {
+          "$ref": "#/$defs/text"
+        }
+      }
+    },
+    "node.failed": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/node_ref"
+        }
+      ],
+      "required": [
+        "failure_class"
+      ],
+      "properties": {
+        "failure_class": {
+          "$ref": "#/$defs/failure_class"
+        },
+        "summary": {
+          "$ref": "#/$defs/text"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "node.skipped": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/node_ref"
+        }
+      ],
+      "properties": {
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "node.reused": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/node_ref"
+        }
+      ],
+      "required": [
+        "from_attempt"
+      ],
+      "properties": {
+        "from_attempt": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "node.suspended": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/node_ref"
+        }
+      ],
+      "properties": {
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "engine.heartbeat": {
+      "type": "object",
+      "required": [
+        "slots",
+        "halted",
+        "paused"
+      ],
+      "properties": {
+        "slots": {
+          "type": "object",
+          "required": [
+            "total",
+            "busy"
+          ],
+          "properties": {
+            "total": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "busy": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "halted": {
+          "type": "boolean"
+        },
+        "paused": {
+          "type": "boolean"
+        },
+        "archon_pin": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{7,40}$"
+        },
+        "bridge_cursor": {
+          "type": "string"
+        },
+        "sandbox": {
+          "enum": [
+            "docker",
+            "podman",
+            "worktree",
+            "none"
+          ]
+        }
+      }
+    },
+    "workitem.claimed": {
+      "type": "object",
+      "required": [
+        "claimed_by"
+      ],
+      "properties": {
+        "claimed_by": {
+          "type": "object",
+          "required": [
+            "engine"
+          ],
+          "properties": {
+            "engine": {
+              "type": "string"
+            },
+            "run": {
+              "type": "string"
+            }
+          }
+        },
+        "evidence": {
+          "type": "string"
+        }
+      }
+    },
+    "agent.heartbeat": {
+      "type": "object",
+      "required": [
+        "agent_id",
+        "pool",
+        "kind",
+        "location",
+        "state"
+      ],
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "pool": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "engine",
+            "compliance"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "description": "gce:{zone}/{vm} | gke:{cluster}/{pod} | host:{name}"
+        },
+        "state": {
+          "enum": [
+            "starting",
+            "idle",
+            "busy",
+            "draining",
+            "stopped"
+          ]
+        },
+        "products": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "model": {
+          "type": "string"
+        },
+        "tier": {
+          "enum": [
+            "small",
+            "medium",
+            "large"
+          ]
+        },
+        "auth_method": {
+          "enum": [
+            "vertex",
+            "api_key",
+            "subscription",
+            "anthropic_wif",
+            "none"
+          ]
+        },
+        "version": {
+          "type": "string",
+          "description": "image digest or code revision"
+        },
+        "spent_usd_today": {
+          "type": "number",
+          "minimum": 0
+        },
+        "reports_today": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stopped_reason": {
+          "type": "string"
+        },
+        "trigger": {
+          "type": "string",
+          "description": "subscription the agent starts from (event-triggered); absent: timer only"
+        },
+        "triggered_today": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "last_trigger_at": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "compliance.reported": {
+      "type": "object",
+      "required": [
+        "product",
+        "change",
+        "pr",
+        "head",
+        "base",
+        "mode",
+        "status",
+        "rules"
+      ],
+      "properties": {
+        "product": {
+          "type": "string"
+        },
+        "change": {
+          "type": "string",
+          "pattern": "^codehost:[a-z0-9-]+/.+#[0-9]+$"
+        },
+        "pr": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "head": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "base": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "mode": {
+          "enum": [
+            "advisory"
+          ]
+        },
+        "status": {
+          "enum": [
+            "no_rules",
+            "clean",
+            "findings",
+            "capped",
+            "error"
+          ]
+        },
+        "rules": {
+          "type": "object",
+          "required": [
+            "name",
+            "version",
+            "hash",
+            "count"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "hash": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "findings": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "required": [
+              "rule",
+              "severity",
+              "title"
+            ],
+            "properties": {
+              "rule": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "info",
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "file": {
+                "type": "string"
+              },
+              "line": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "detail": {
+                "type": "string",
+                "maxLength": 2000
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "model": {
+          "type": "string"
+        },
+        "effort": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "cost_usd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "diff_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "diff_truncated": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "additionalProperties": false
+    },
+    "command.issued": {
+      "type": "object",
+      "required": [
+        "command_id",
+        "action",
+        "target",
+        "who",
+        "reason"
+      ],
+      "properties": {
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        },
+        "action": {
+          "type": "string",
+          "pattern": "^[a-z]+\\.[a-z_]+$",
+          "description": "deployment.apply|start|stop|restart|remove|scale; later engine.halt, product.update …"
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "args": {
+          "type": "object"
+        },
+        "who": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 500
+        },
+        "via": {
+          "enum": [
+            "console",
+            "cli",
+            "coordinator"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "command.acknowledged": {
+      "type": "object",
+      "required": [
+        "command_id",
+        "action",
+        "target",
+        "accepted"
+      ],
+      "properties": {
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        },
+        "action": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        },
+        "accepted": {
+          "type": "boolean"
+        },
+        "who": {
+          "type": "string"
+        },
+        "handler": {
+          "type": "string"
+        },
+        "refusal": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "additionalProperties": false
+    },
+    "deployment.step": {
+      "type": "object",
+      "required": [
+        "command_id",
+        "deployment",
+        "seq",
+        "step",
+        "ok"
+      ],
+      "properties": {
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        },
+        "deployment": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*@[a-z][a-z0-9-]*$"
+        },
+        "host": {
+          "type": "string"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "step": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "detail": {
+          "type": "string",
+          "maxLength": 600
+        }
+      },
+      "additionalProperties": false
+    },
+    "deployment.changed": {
+      "type": "object",
+      "required": [
+        "command_id",
+        "deployment",
+        "action",
+        "ok"
+      ],
+      "properties": {
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        },
+        "deployment": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*@[a-z][a-z0-9-]*$"
+        },
+        "host": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "string",
+          "maxLength": 600
+        },
+        "digest": {
+          "type": "string"
+        },
+        "image": {
+          "type": "string"
+        },
+        "instances": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "state"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              },
+              "digest": {
+                "type": "string"
+              },
+              "started_at": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "desired": {
+          "type": "object",
+          "required": [
+            "component",
+            "host",
+            "replicas"
+          ],
+          "additionalProperties": false,
+          "description": "the deployment's desired state after this command (what restore reapplies)",
+          "properties": {
+            "component": {
+              "type": "string"
+            },
+            "host": {
+              "type": "string"
+            },
+            "replicas": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20
+            },
+            "digest": {
+              "type": "string"
+            },
+            "products": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 10
+            }
+          }
+        },
+        "trigger": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "subscription",
+            "types"
+          ],
+          "description": "R6: the filtered subscription that starts this deployment's agents",
+          "properties": {
+            "subscription": {
+              "type": "string",
+              "pattern": "^factory-trig-[a-z0-9-]+$"
+            },
+            "types": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string"
+              }
+            },
+            "product": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "product.registered": {
+      "type": "object",
+      "required": [
+        "product",
+        "seed",
+        "seed_hash"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "product": {
+          "type": "string"
+        },
+        "seed": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        },
+        "seed_hash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "source": {
+          "type": "string"
+        }
+      }
+    },
+    "product.updated": {
+      "type": "object",
+      "required": [
+        "product",
+        "field",
+        "old",
+        "new",
+        "who",
+        "reason",
+        "command_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "product": {
+          "type": "string"
+        },
+        "field": {
+          "enum": [
+            "base_branch",
+            "compliance.mode",
+            "compliance.label",
+            "compliance.daily_cap_usd"
+          ]
+        },
+        "old": {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ]
+        },
+        "new": {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ]
+        },
+        "who": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        }
+      }
+    },
+    "engine.halted": {
+      "type": "object",
+      "required": [
+        "engine"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "engine": {
+          "type": "string"
+        },
+        "who": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        },
+        "via": {
+          "enum": [
+            "console",
+            "cli",
+            "consumer"
+          ]
+        }
+      }
+    },
+    "engine.unhalted": {
+      "type": "object",
+      "required": [
+        "engine"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "engine": {
+          "type": "string"
+        },
+        "who": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        },
+        "via": {
+          "enum": [
+            "console",
+            "cli",
+            "consumer"
+          ]
+        }
+      }
+    },
+    "problem.acknowledged": {
+      "type": "object",
+      "required": [
+        "problem_id",
+        "who",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "problem_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 200
+        },
+        "since": {
+          "type": "string"
+        },
+        "who": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        }
+      }
+    },
+    "problem.resolved": {
+      "type": "object",
+      "required": [
+        "problem_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "problem_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 200
+        },
+        "since": {
+          "type": "string"
+        },
+        "who": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        },
+        "by_rule": {
+          "type": "boolean"
+        }
+      }
+    },
+    "command.completed": {
+      "type": "object",
+      "required": [
+        "command_id",
+        "action",
+        "target",
+        "ok"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        },
+        "action": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "detail": {
+          "type": "string",
+          "maxLength": 600
+        },
+        "error": {
+          "type": "string",
+          "maxLength": 600
+        }
+      }
+    },
+    "host.heartbeat": {
+      "type": "object",
+      "required": [
+        "host",
+        "kind",
+        "state"
+      ],
+      "additionalProperties": false,
+      "description": "health of one host, from the command handler on the main node every 60 s",
+      "properties": {
+        "host": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,40}$"
+        },
+        "kind": {
+          "enum": [
+            "local",
+            "vm"
+          ]
+        },
+        "state": {
+          "enum": [
+            "healthy",
+            "unreachable",
+            "installing",
+            "degraded"
+          ]
+        },
+        "address": {
+          "type": "string"
+        },
+        "docker": {
+          "type": "string"
+        },
+        "cpus": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "load1": {
+          "type": "number",
+          "minimum": 0
+        },
+        "mem_total_mb": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mem_used_pct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "disk_total_gb": {
+          "type": "number",
+          "minimum": 0
+        },
+        "disk_used_pct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "containers": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "error": {
+          "type": "string",
+          "maxLength": 300
+        }
+      }
+    },
+    "host.step": {
+      "type": "object",
+      "required": [
+        "command_id",
+        "host",
+        "seq",
+        "step",
+        "ok"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        },
+        "host": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,40}$"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "step": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "detail": {
+          "type": "string",
+          "maxLength": 600
+        }
+      }
+    },
+    "host.changed": {
+      "type": "object",
+      "required": [
+        "command_id",
+        "host",
+        "action",
+        "ok"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        },
+        "host": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,40}$"
+        },
+        "action": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "string",
+          "maxLength": 600
+        },
+        "kind": {
+          "enum": [
+            "local",
+            "vm"
+          ]
+        },
+        "state": {
+          "enum": [
+            "healthy",
+            "unreachable",
+            "installing",
+            "degraded",
+            "removed",
+            "created"
+          ]
+        },
+        "address": {
+          "type": "string"
+        },
+        "desired": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "local",
+                "vm"
+              ]
+            },
+            "machine_type": {
+              "type": "string"
+            },
+            "zone": {
+              "type": "string"
+            },
+            "labels": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "git_pull": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product",
+        "repo",
+        "change",
+        "pr",
+        "title",
+        "state",
+        "head",
+        "base"
+      ],
+      "properties": {
+        "product": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        },
+        "initial": {
+          "type": "boolean",
+          "description": "sent when the poller first saw this repository: state that already existed, not a new happening"
+        },
+        "change": {
+          "type": "string",
+          "pattern": "^codehost:[a-z0-9-]+/.+#[0-9]+$"
+        },
+        "pr": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "state": {
+          "enum": [
+            "open",
+            "closed",
+            "merged"
+          ]
+        },
+        "head": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "previous_head": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "base": {
+          "type": "string",
+          "maxLength": 255
+        },
+        "author": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "url": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "draft": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+        },
+        "updated_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+        },
+        "closed_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+        },
+        "merged_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+        },
+        "reopened": {
+          "type": "boolean"
+        }
+      }
+    },
+    "pullrequest.opened": {
+      "$ref": "#/$defs/git_pull"
+    },
+    "pullrequest.updated": {
+      "$ref": "#/$defs/git_pull"
+    },
+    "pullrequest.merged": {
+      "$ref": "#/$defs/git_pull"
+    },
+    "pullrequest.closed": {
+      "$ref": "#/$defs/git_pull"
+    },
+    "check.completed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product",
+        "repo",
+        "change",
+        "pr",
+        "head",
+        "name",
+        "check_id",
+        "conclusion"
+      ],
+      "properties": {
+        "product": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        },
+        "initial": {
+          "type": "boolean",
+          "description": "sent when the poller first saw this repository: state that already existed, not a new happening"
+        },
+        "change": {
+          "type": "string",
+          "pattern": "^codehost:[a-z0-9-]+/.+#[0-9]+$"
+        },
+        "pr": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "head": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "check_id": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "conclusion": {
+          "enum": [
+            "success",
+            "failure",
+            "neutral",
+            "cancelled",
+            "skipped",
+            "timed_out",
+            "action_required",
+            "stale",
+            "unknown"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "completed_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+        }
+      }
+    },
+    "git_issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product",
+        "repo",
+        "work_item",
+        "number",
+        "title",
+        "state"
+      ],
+      "properties": {
+        "product": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        },
+        "initial": {
+          "type": "boolean",
+          "description": "sent when the poller first saw this repository: state that already existed, not a new happening"
+        },
+        "work_item": {
+          "type": "string",
+          "pattern": "^tracker:[a-z0-9-]+/.+$"
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "state": {
+          "enum": [
+            "open",
+            "closed"
+          ]
+        },
+        "labels": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        "author": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "url": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "created_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+        },
+        "updated_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+        },
+        "closed_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+        },
+        "reopened": {
+          "type": "boolean"
+        }
+      }
+    },
+    "workitem.opened": {
+      "$ref": "#/$defs/git_issue"
+    },
+    "workitem.updated": {
+      "$ref": "#/$defs/git_issue"
+    },
+    "workitem.closed": {
+      "$ref": "#/$defs/git_issue"
+    },
+    "branch.pushed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product",
+        "repo",
+        "branch",
+        "head"
+      ],
+      "properties": {
+        "product": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        },
+        "initial": {
+          "type": "boolean",
+          "description": "sent when the poller first saw this repository: state that already existed, not a new happening"
+        },
+        "branch": {
+          "type": "string",
+          "maxLength": 255
+        },
+        "head": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "previous": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        }
+      }
+    },
+    "branch.deleted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product",
+        "repo",
+        "branch"
+      ],
+      "properties": {
+        "product": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        },
+        "initial": {
+          "type": "boolean",
+          "description": "sent when the poller first saw this repository: state that already existed, not a new happening"
+        },
+        "branch": {
+          "type": "string",
+          "maxLength": 255
+        },
+        "previous": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        }
+      }
+    },
+    "codehost.polled": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product",
+        "repo",
+        "ok"
+      ],
+      "properties": {
+        "product": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "error_kind": {
+          "enum": [
+            "auth",
+            "rate_limited",
+            "not_found",
+            "http",
+            "network",
+            "other"
+          ]
+        },
+        "open_prs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "open_issues": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "branches": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "base_branch": {
+          "type": "string"
+        },
+        "base_head": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "interval_s": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "authenticated": {
+          "type": "boolean"
+        },
+        "requests": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "not_modified": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rate_limit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rate_remaining": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rate_reset": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+        }
+      }
+    }
+  }
+}

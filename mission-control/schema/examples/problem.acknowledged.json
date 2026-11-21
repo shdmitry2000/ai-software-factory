@@ -1,0 +1,17 @@
+{
+  "specversion": "1.0",
+  "id": "problem-ack:d00dfeed1234",
+  "source": "factory://factory-1/command-handler",
+  "type": "dev.factory.problem.acknowledged",
+  "subject": "problem/deployment.down:compliance@local",
+  "time": "2026-11-21T18:00:00Z",
+  "datacontenttype": "application/json",
+  "factoryengine": "factory-1",
+  "data": {
+    "problem_id": "deployment.down:compliance@local",
+    "since": "2026-11-21T17:59:00Z",
+    "who": "operator",
+    "reason": "stopped on purpose for a rules change",
+    "command_id": "d00dfeed1234"
+  }
+}
