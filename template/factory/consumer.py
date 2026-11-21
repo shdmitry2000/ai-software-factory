@@ -19,6 +19,10 @@ SETTINGS = ".factory/consumer.json"
 ENTRY = "packages/cli/src/cli.ts"
 SCHEDULE = ".factory/schedule.json"
 TRIGGER = ".factory/trigger.json"
+# The product's base branch as the operator set it in mission control (machine-local,
+# git-ignored; written by the command handler). Read at every lap start.
+BASE_FILE = ".factory/base_branch"
+BRANCH = re.compile(r"(?!/)(?!.*//)(?!.*\.\.)[A-Za-z0-9._/-]{1,200}(?<![./])")
 PAUSE = ".factory/PAUSE"
 # The shared workflows that carry a merge gate, and the merge policy keys each one accepts.
 MERGING_WORKFLOWS = {"archon-merge-queue": ("required_checks", "protected_paths"),
@@ -388,6 +392,15 @@ def invoke(root: Path, action: str, args: list[str]) -> int:
         if not resuming:
             native += ["--workflow-source", str(source)]
             args = with_default_inputs(name, args, options, root)
+            # The configured base branch, read now: a console change applies from the next lap.
+            # A caller's own branch choice wins.
+            chosen = {"--base", "--branch", "--from", "--from-branch", "--no-worktree", "--adopt"}
+            if not any(arg.split("=", 1)[0] in chosen for arg in options):
+                schedule_file = shared_root(root) / SCHEDULE
+                schedule_data = json.loads(schedule_file.read_text(encoding="utf-8")) if schedule_file.exists() else {}
+                base = configured_base(root, schedule_data)
+                if base:
+                    native += ["--base", base]
     native += args
     if action == "status":
         print(f"Factory source={source} revision={settings['revision']} local_STOP={stop.exists()}", file=sys.stderr)
@@ -423,18 +436,51 @@ def whoami(settings: dict, source: Path, root: Path) -> str:
     raise ValueError("archon trigger whoami returned no runAsUserId")
 
 
-def base_branch(root: Path, schedule_data: dict) -> str | None:
-    """The branch laps start from: schedule.json `base_branch`, else what the last fetch
-    recorded as the remote's default (origin/HEAD), read locally. None when neither is
-    known; the launch then asks the remote itself."""
-    named = schedule_data.get("base_branch")
+def configured_base(root: Path, schedule_data: dict | None = None) -> str | None:
+    """The base branch someone chose: mission control's `.factory/base_branch` (the
+    console setting), else schedule.json `base_branch`. None when neither names one."""
+    path = shared_root(root) / BASE_FILE
+    if path.exists():
+        named = path.read_text(encoding="utf-8").strip()
+        if not BRANCH.fullmatch(named):
+            raise ValueError(f"{BASE_FILE} must hold one branch name")
+        return named
+    named = (schedule_data or {}).get("base_branch")
     if named is not None:
         if not isinstance(named, str) or not re.fullmatch(r"[A-Za-z0-9._/-]+", named):
             raise ValueError("schedule.json base_branch must be a branch name")
         return named
+    return None
+
+
+def base_branch(root: Path, schedule_data: dict) -> str | None:
+    """The branch laps start from: the configured base (console setting, then
+    schedule.json), else what the last fetch recorded as the remote's default
+    (origin/HEAD), read locally. None when nothing is known; the launch then asks the
+    remote itself."""
+    named = configured_base(root, schedule_data)
+    if named:
+        return named
     result = execute(["git", "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"], root)
     head = result.stdout.strip() if result.returncode == 0 else ""
     return head.split("/", 1)[1] if head.startswith("origin/") else None
+
+
+def refresh_base(root: Path, config_path: Path, write=sys.stderr.write) -> None:
+    """Before a scheduled launch: point the binding at the configured base branch, so a
+    console change applies from the next lap without reinstalling the schedule."""
+    schedule_file = shared_root(root) / SCHEDULE
+    schedule_data = json.loads(schedule_file.read_text(encoding="utf-8")) if schedule_file.exists() else {}
+    base = configured_base(root, schedule_data)
+    if not base:
+        return
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    launch = config["binding"]["launch"]
+    if launch.get("isolation") == {"kind": "worktree", "baseOverride": base}:
+        return
+    launch["isolation"] = {"kind": "worktree", "baseOverride": base}
+    config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+    write(f"Laps now start from {base} (configured base branch).\n")
 
 
 def trigger_config(root: Path, settings: dict, source: Path, interval: int) -> dict:
@@ -840,6 +886,7 @@ def schedule(root: Path, args: list[str]) -> int:
                     if not held:
                         write("Another tick is still launching; this one skips the launch.\n")
                     elif launch_decision(root, settings, source, write):
+                        refresh_base(root, config_path, write)
                         fired = execute([*native, "trigger", "fire", "--config", str(config_path)], root,
                                         capture=False, timeout=None, output=log).returncode
             if log:

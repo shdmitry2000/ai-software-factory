@@ -19,6 +19,7 @@ FAILED_WINDOW_S = 24 * 3600    # failed runs shown as problems for a day
 RUN_LIMIT = 150
 SEVERITY_ORDER = {"critical": 0, "warning": 1, "info": 2}
 FINDING_ORDER = {"high": 0, "medium": 1, "low": 2, "info": 3}
+BASE_GRACE_S = 180             # a base-branch change reaches the engine's heartbeat within this
 GIT_STALE_S = 900              # no successful poll of a repository for this long: stale
 CHECK_FAILED = {"failure", "timed_out", "cancelled", "action_required", "stale"}
 
@@ -199,6 +200,7 @@ def products(store: StateStore, at: datetime, products_dir: Path, prompts=None,
     docs = {d.get("product"): d for d in store.query("products")}
     repos = {d.get("product"): d for d in store.query("repos")}
     all_pulls, all_items = store.query("pullrequests"), store.query("workitems")
+    all_engines = store.query("engines")
     all_reports = reports(store, at)
     all_runs = runs(store, at, limit=RUN_LIMIT)
     out = []
@@ -244,6 +246,8 @@ def products(store: StateStore, at: datetime, products_dir: Path, prompts=None,
         open_rep = [row["report"] for row in open_pulls if row.get("report")]
         poll = repo.get("poll") or {}
         prob = [x for x in (problem_list or []) if getattr(x, "product", "") == p.name]
+        engine_bases = sorted({(e.get("engine", ""), e.get("base_branch", "")) for e in all_engines
+                               if e.get("product") == p.name and e.get("base_branch")})
         out.append({"name": p.name, "repo": p.repo, "base_branch": p.base_branch, "codehost": p.codehost,
                     "compliance": p.compliance, "reports": rep, "runs": rn[:5],
                     "pulls": open_pulls, "closed_pulls": closed_pulls[:5],
@@ -257,7 +261,8 @@ def products(store: StateStore, at: datetime, products_dir: Path, prompts=None,
                     "polled": polled, "git_seen_ago": ago(repo.get("git_seen_at"), at),
                     "git_stale": polled and git_stale(repo, at), "git_error": "" if poll.get("ok", True) else poll.get("error", ""),
                     "rate": f"{poll['rate_remaining']}/{poll['rate_limit']}" if poll.get("rate_limit") else "",
-                    "problems": len(prob),
+                    "problems": len(prob), "engine_bases": [{"engine": n, "base": b, "ok": b == p.base_branch}
+                                                            for n, b in engine_bases],
                     "last_run": rn[0] if rn else None, "overrides": overrides, "history": history,
                     "labels": labels, "modes": sorted(products_mod.MODES),
                     "registered": bool(doc.get("seed_hash"))})
@@ -364,6 +369,23 @@ def problems(store: StateStore, at: datetime, spec_hosts: set[str] | None = None
                                f"Checks failing on {x.get('product')} #{x.get('pr')}",
                                ", ".join(cs["failed"])[:300], "/projects", str(x.get("head", ""))[:12], key,
                                product=x.get("product", "")))
+    wanted = {}
+    for pdoc in store.query("products"):
+        b = (pdoc.get("effective") or {}).get("base_branch")
+        if b:
+            wanted[pdoc.get("product")] = (b, max([o.get("time", "") for o in (pdoc.get("overrides") or {}).values()]
+                                                  + [pdoc.get("seed_time", "")]))
+    for e in engines(store, at):
+        prod, base = e.get("product", ""), e.get("base_branch", "")
+        if not (prod in wanted and base and e.get("alive")):
+            continue
+        want, since = wanted[prod]
+        a = age_s(since, at)
+        if base != want and (a is None or a >= BASE_GRACE_S):
+            out.append(Problem("warning", "engine.base_mismatch",
+                               f"Engine {e.get('engine')} starts laps from {base}, not {want}",
+                               f"{prod}'s base branch is {want}; the command handler writes it to the engine's checkout",
+                               "/projects", since, f"{e.get('engine')}:{prod}", product=prod))
     for repo in store.query("repos"):
         name, poll = repo.get("product", ""), repo.get("poll") or {}
         if not poll.get("ok", True):

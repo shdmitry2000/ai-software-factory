@@ -48,6 +48,7 @@ DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 HOST_STATES = {"healthy", "unreachable", "installing", "degraded"}
 HOST_FACTS = {"docker": str, "cpus": int, "load1": float, "mem_total_mb": int, "mem_used_pct": float,
               "disk_total_gb": float, "disk_used_pct": float, "containers": int, "error": str}
+BASE_FILE = ".factory/base_branch"            # read by factory/consumer.py at every lap start (N1)
 LOGS_SOCKET = "/run/mission-control-handler/logs.sock"
 DEPLOYMENT_ACTIONS = {"deployment.apply", "deployment.start", "deployment.stop", "deployment.restart",
                       "deployment.remove", "deployment.scale"}
@@ -538,8 +539,14 @@ class CommandHandler:
                 out.append(self._publish("dev.factory.product.updated", f"product-updated:{cid}", f"product/{target}",
                                          {"product": target, "field": args["field"], "old": args["old"],
                                           "new": args["new"], "who": who, "reason": reason, "command_id": cid}, key))
-                out.append(self._completed(cid, action, target, True,
-                                           f"{args['field']}: {args['old']} → {args['new']}", key))
+                msg = f"{args['field']}: {args['old']} → {args['new']}"
+                if args["field"] == "base_branch" and self._app_product() == target:
+                    try:
+                        self.write_base(str(args["new"]))
+                        msg += "; the engine's laps start from it from the next lap"
+                    except OSError as e:                 # the setting is stored; the engine keeps its old base
+                        msg += f"; the engine was not told ({type(e).__name__}: {e})"
+                out.append(self._completed(cid, action, target, True, msg, key))
             elif action in ("engine.halt", "engine.unhalt"):
                 verb = action.split(".", 1)[1]
                 ok, msg = self.consumer(self.app_dir, verb)
@@ -559,6 +566,47 @@ class CommandHandler:
         except Exception as e:                          # report, never crash the loop
             out.append(self._completed(cid, action, target, False, f"{type(e).__name__}: {e}", key))
         return out
+
+    # ---------------------------------------------------------------- the engine's base branch (N1)
+    def _app_product(self) -> str:
+        """The product whose checkout the engine runs laps in (app_dir), by its origin remote."""
+        if self.app_dir is None or self.products_dir is None:
+            return ""
+        try:
+            url = subprocess.run(["git", "-C", str(self.app_dir), "remote", "get-url", "origin"],
+                                 capture_output=True, text=True, timeout=30).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        slug = re.sub(r"\.git$", "", url.rstrip("/")).rsplit(":", 1)[-1]
+        slug = "/".join(slug.split("/")[-2:])
+        for name, p in products_mod.load_all(self.products_dir).items():
+            if p.repo.lower() == slug.lower():
+                return name
+        return ""
+
+    def write_base(self, branch: str) -> bool:
+        """Tell the engine the product's base branch: `.factory/base_branch` in its checkout,
+        which factory/consumer.py reads at every lap start. True when it changed."""
+        branch = products_mod.check_value("base_branch", branch)
+        path = Path(self.app_dir) / BASE_FILE
+        if path.exists() and path.read_text(encoding="utf-8").strip() == branch:
+            return False
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(branch + "\n", encoding="utf-8")
+        tmp.replace(path)
+        return True
+
+    def sync_base(self) -> str:
+        """At start: the engine's base = the product's effective base_branch (file +
+        console change). Returns the branch written, or ''."""
+        name = self._app_product()
+        p = self._product_file(name) if name else None
+        if p is None:
+            return ""
+        eff = products_mod.apply_effective(p, self._effective(name))
+        self.write_base(eff.base_branch)
+        return eff.base_branch
 
     def sync_products(self) -> list[Event]:
         """Send product.registered for every product file whose settings changed."""
@@ -667,6 +715,12 @@ class CommandHandler:
                 log.info("registered %s", ev["subject"])
         except Exception:
             log.exception("product sync failed; commands are still handled")
+        try:
+            base = self.sync_base()
+            if base:
+                log.info("engine laps start from %s", base)
+        except Exception:
+            log.exception("base branch sync failed; commands are still handled")
         import threading
 
         def beats():

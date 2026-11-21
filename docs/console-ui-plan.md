@@ -255,7 +255,7 @@ and tests call.
 | # | Step | Done when |
 |---|---|---|
 | UI-2.1 ✅ | Command events and the factory-1 command handler (`product.update`, `engine.halt`) with schemas | unit tests: optimistic lock, refused on stale old value |
-| UI-2.2 ✅ | Product settings editor (base branch, compliance mode, rules label, cap); one `product.update` per changed field, carrying the value the operator saw | a change emits `product.updated`; the compliance agent applies it on its next tick. The engine reading `base_branch` from `products/{name}.effective` is N1's engine side (not yet) |
+| UI-2.2 ✅ | Product settings editor (base branch, compliance mode, rules label, cap); one `product.update` per changed field, carrying the value the operator saw | a change emits `product.updated`; the compliance agent applies it on its next tick. Engine side (N1, 2026-11-22): the handler writes the base into the engine's checkout; laps start from it from the next lap; Projects shows the engine's base and `engine.base_mismatch` flags a difference |
 | UI-2.3 ✅ | Halt / unhalt button (runs `consumer.py halt/unhalt`; the bridge now reports the real STOP/PAUSE state) | engine halts; audit shows operator and reason |
 | UI-2.4 ✅ | Audit view | every command with who, when, reason, result |
 | UI-2.5 ✅ | Problems: acknowledge / resolve, tied to the occurrence (`since`) | state change recorded as an event (`problem.acknowledged/resolved`) |

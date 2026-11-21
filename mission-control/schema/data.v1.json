@@ -442,6 +442,14 @@
             "worktree",
             "none"
           ]
+        },
+        "product": {
+          "type": "string"
+        },
+        "base_branch": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "N1: the branch the engine's next lap starts from (.factory/base_branch, from the console setting)"
         }
       }
     },

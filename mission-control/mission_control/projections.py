@@ -127,9 +127,11 @@ def _apply_engine(doc: dict | None, ev: Event) -> dict:
     d, t, data = _base(doc, engine=ev.get("factoryengine")), ev["time"], ev.get("data", {})
     if t >= (d.get("last_heartbeat") or ""):
         d["last_heartbeat"] = t
-        for k in ("slots", "halted", "paused", "archon_pin", "sandbox"):
+        for k in ("slots", "halted", "paused", "archon_pin", "sandbox", "product", "base_branch"):
             if k in data:
                 d[k] = data[k]
+        if "base_branch" not in data:
+            d.pop("base_branch", None)
     return d
 
 

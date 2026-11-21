@@ -259,6 +259,15 @@ class ArchonEngine:
         data: dict[str, Any] = {"slots": {"total": self.slots, "busy": int(busy)}, "halted": halted, "paused": paused}
         if self.pin:
             data["archon_pin"] = self.pin
+        if self.product:
+            data["product"] = self.product
+        if self.app_dir is not None:                    # N1: the base the next lap starts from
+            try:
+                base = (self.app_dir / ".factory" / "base_branch").read_text(encoding="utf-8").strip()
+            except OSError:
+                base = ""
+            if base:
+                data["base_branch"] = base[:200]
         return {
             "specversion": "1.0", "id": f"bridge:{self.engine}:{now}", "source": f"factory://{self.engine}/bridge",
             "type": "dev.factory.engine.heartbeat", "subject": f"engine/{self.engine}", "time": now,
