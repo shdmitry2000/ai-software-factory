@@ -322,6 +322,8 @@ def hosts(store: StateStore, at: datetime, spec=None) -> list[dict]:
     out = []
     for hid in sorted(ids, key=lambda h: (h != "local", h)):
         doc = docs.get(hid) or {}
+        if doc.get("state") == "removed" and not (spec and hid in spec.hosts):
+            continue
         hs = spec.hosts.get(hid) if spec else None
         a = age_s(doc.get("last_heartbeat"), at)
         health = doc.get("health") or {}

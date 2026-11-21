@@ -50,7 +50,19 @@ HOST_FACTS = {"docker": str, "cpus": int, "load1": float, "mem_total_mb": int, "
 LOGS_SOCKET = "/run/mission-control-handler/logs.sock"
 DEPLOYMENT_ACTIONS = {"deployment.apply", "deployment.start", "deployment.stop", "deployment.restart",
                       "deployment.remove", "deployment.scale"}
-ACTIONS = DEPLOYMENT_ACTIONS | {"product.update", "engine.halt", "engine.unhalt", "problem.ack", "problem.resolve"}
+HOST_ACTIONS = {"host.create", "host.install", "host.remove"}
+ACTIONS = DEPLOYMENT_ACTIONS | HOST_ACTIONS | {"product.update", "engine.halt", "engine.unhalt", "problem.ack",
+                                               "problem.resolve", "fleet.restore"}
+
+
+class Seq:
+    """Step numbers of one command (host and deployment steps share them)."""
+    def __init__(self) -> None:
+        self.n = 0
+
+    def next(self) -> int:
+        self.n += 1
+        return self.n
 
 
 def run_consumer(app_dir: Path, verb: str) -> tuple[bool, str]:
@@ -75,6 +87,7 @@ class CommandHandler:
     prompts: PromptRegistry | None = None
     app_dir: Path | None = None
     consumer: Callable[[Path, str], tuple[bool, str]] = run_consumer
+    max_vm_hosts: int = 3
     _seen: set[str] = field(default_factory=set)
 
     # ---------------------------------------------------------------- events
@@ -116,39 +129,53 @@ class CommandHandler:
                                  f"engine/{self.engine}/command/{cid}", ack, key))
         if refusal:
             return out
+        if action in HOST_ACTIONS or action == "fleet.restore":
+            out += self._run_hosts(cid, action, target, args, key)
+            return out
         if action not in DEPLOYMENT_ACTIONS:
             out += self._run_other(cid, action, target, args, data, key)
             return out
+        evs, _, _ = self._deploy(cid, action, target, args, key, Seq())
+        return out + evs
 
+    def _deploy(self, cid: str, action: str, target: str, args: dict, key: str, seq: Seq,
+                report_as: str = "") -> tuple[list[Event], bool, str]:
+        """Run one deployment action; a deployment.step per step, then deployment.changed."""
+        out: list[Event] = []
         host = target.split("@", 1)[1]
         subject = f"deployment/{target}"
-        ok, err, seq, extra = True, "", 0, {}
+        ok, err, extra = True, "", {}
         try:
             for step in self._run(action, target, args, extra):
-                seq += 1
                 ok &= step.ok
-                out.append(self._publish("dev.factory.deployment.step", f"deployment-step:{cid}:{seq:03d}", subject,
-                                         {"command_id": cid, "deployment": target, "host": host, "seq": seq,
-                                          "step": step.step, "ok": step.ok, "detail": step.detail[:600]}, key))
+                out.append(self._step(cid, seq, step, deployment=target, host=host, key=key))
                 if not step.ok:
                     err = f"{step.step}: {step.detail}"[:600]
         except Exception as e:                          # report, never crash the loop
             ok, err = False, f"{type(e).__name__}: {e}"[:600]
-            seq += 1
-            out.append(self._publish("dev.factory.deployment.step", f"deployment-step:{cid}:{seq:03d}", subject,
-                                     {"command_id": cid, "deployment": target, "host": host, "seq": seq,
-                                      "step": "error", "ok": False, "detail": err}, key))
+            out.append(self._step(cid, seq, Step("error", False, err), deployment=target, host=host, key=key))
         try:
             inst = [i for i in self.runtime.status() if i.deployment == target]
         except Exception as e:
             inst, err = [], err or f"status: {e}"
-        changed = {"command_id": cid, "deployment": target, "host": host, "action": action, "ok": ok,
+        changed = {"command_id": cid, "deployment": target, "host": host, "action": report_as or action, "ok": ok,
                    "instances": [{"name": i.name, "state": i.state, "digest": i.digest[:71],
                                   "started_at": i.started_at} for i in inst][:50], **extra}
         if err:
             changed["error"] = err
-        out.append(self._publish("dev.factory.deployment.changed", f"deployment-changed:{cid}", subject, changed, key))
-        return out
+        eid = f"deployment-changed:{cid}" + (f":{target}" if report_as else "")
+        out.append(self._publish("dev.factory.deployment.changed", eid, subject, changed, key))
+        return out, ok, err
+
+    def _step(self, cid: str, seq: Seq, step: Step, *, key: str, deployment: str = "", host: str = "") -> Event:
+        n = seq.next()
+        if deployment:
+            return self._publish("dev.factory.deployment.step", f"deployment-step:{cid}:{n:03d}", f"deployment/{deployment}",
+                                 {"command_id": cid, "deployment": deployment, "host": host, "seq": n,
+                                  "step": step.step[:40], "ok": step.ok, "detail": step.detail[:600]}, key)
+        return self._publish("dev.factory.host.step", f"host-step:{cid}:{n:03d}", f"host/{host}",
+                             {"command_id": cid, "host": host, "seq": n, "step": step.step[:40], "ok": step.ok,
+                              "detail": step.detail[:600]}, key)
 
     def _handled(self, cid: str) -> bool:
         if cid in self._seen:
@@ -173,6 +200,10 @@ class CommandHandler:
             return ""
         if action in ("problem.ack", "problem.resolve"):
             return "" if PROBLEM_ID.match(target) else f"not a problem id: {target!r}"
+        if action in HOST_ACTIONS:
+            return self._check_host(action, target, args)
+        if action == "fleet.restore":
+            return "" if target == self.engine else f"this handler restores engine {self.engine!r}'s fleet, not {target!r}"
         if not DEPLOYMENT_ID.match(target):
             return f"target must be a deployment id like compliance@local, not {target!r}"
         if action == "deployment.scale":
@@ -188,6 +219,145 @@ class CommandHandler:
             except ValueError as e:
                 return str(e)[:500]
         return ""
+
+    def _check_host(self, action: str, target: str, args: dict) -> str:
+        from mission_control.adapters.runtime.gce import HOST_ID, MACHINE_TYPES
+        if action == "host.install" and target == "local":
+            return ""
+        if not HOST_ID.match(target):
+            return f"VM host ids look like agent-1 (agent- then letters, digits, dashes), not {target!r}"
+        known = {h.id for h in self.runtime.hosts()}
+        if action == "host.create":
+            mt = str(args.get("machine_type") or "e2-small")
+            if mt not in MACHINE_TYPES:
+                return f"machine_type must be one of {', '.join(MACHINE_TYPES)}"
+            args["machine_type"] = mt
+            vms = {h for h in known if h != "local"}
+            if target not in vms and len(vms) >= self.max_vm_hosts:
+                return f"at most {self.max_vm_hosts} VM hosts (now: {', '.join(sorted(vms))}); remove one first"
+            return ""
+        if target not in known:
+            return f"no host {target!r}"
+        return ""
+
+    def _run_hosts(self, cid: str, action: str, target: str, args: dict, key: str) -> list[Event]:
+        """host.create (create + install), host.install, host.remove, fleet.restore."""
+        from mission_control.ports import Host
+        out: list[Event] = []
+        seq = Seq()
+
+        def steps(it, host: str) -> tuple[bool, str]:
+            ok, err = True, ""
+            try:
+                for st in it:
+                    ok &= st.ok
+                    out.append(self._step(cid, seq, st, host=host, key=key))
+                    if not st.ok:
+                        err = f"{st.step}: {st.detail}"[:600]
+                        break
+            except Exception as e:
+                ok, err = False, f"{type(e).__name__}: {e}"[:600]
+                out.append(self._step(cid, seq, Step("error", False, err), host=host, key=key))
+            return ok, err
+
+        def changed(host: str, ok: bool, err: str, state: str, desired: dict | None, report_as: str = "") -> None:
+            addr = next((h.address for h in self.runtime.hosts() if h.id == host), "")
+            data = {"command_id": cid, "host": host, "action": report_as or action, "ok": ok,
+                    "kind": "local" if host == "local" else "vm", "state": state}
+            if addr:
+                data["address"] = addr
+            if desired:
+                data["desired"] = desired
+            if err:
+                data["error"] = err
+            eid = f"host-changed:{cid}" + (f":{host}" if report_as else "")
+            out.append(self._publish("dev.factory.host.changed", eid, f"host/{host}", data, key))
+
+        def bring_up(host: str, desired: dict, report_as: str = "") -> bool:
+            ok, err = steps(self.runtime.create_host(Host(host, "vm", labels={"machine_type": desired.get("machine_type", "e2-small")})), host)
+            if ok:
+                ok, err = steps(self.runtime.install(host), host)
+            changed(host, ok, err, "healthy" if ok else "degraded", desired, report_as)
+            return ok
+
+        zone = getattr(getattr(self.runtime, "gce", None), "zone", "")
+        try:
+            if action == "host.create":
+                desired = {"kind": "vm", "machine_type": args["machine_type"]}
+                if zone:
+                    desired["zone"] = zone
+                ok = bring_up(target, desired)
+                out.append(self._completed(cid, action, target, ok, f"{target} is ready" if ok else "see the steps", key))
+            elif action == "host.install":
+                ok, err = steps(self.runtime.install(target), target)
+                stored = self._stored("hosts", target).get("desired")
+                changed(target, ok, err, "healthy" if ok else "degraded", stored)
+                out.append(self._completed(cid, action, target, ok, "installed" if ok else err or "failed", key))
+            elif action == "host.remove":
+                on_host = [d["deployment"] for d in (self.store.query("deployments") if self.store else [])
+                           if str(d.get("deployment", "")).endswith(f"@{target}") and d.get("state") != "removed"]
+                ok, err = steps(self.runtime.remove_host(target), target)
+                if ok:
+                    for dep in on_host:
+                        out.append(self._publish("dev.factory.deployment.changed", f"deployment-changed:{cid}:{dep}",
+                                                 f"deployment/{dep}", {"command_id": cid, "deployment": dep, "host": target,
+                                                                       "action": "deployment.remove", "ok": True,
+                                                                       "instances": []}, key))
+                changed(target, ok, err, "removed" if ok else "degraded", None)
+                out.append(self._completed(cid, action, target, ok, f"{target} removed" if ok else err or "failed", key))
+            else:
+                out += self._restore(cid, key, seq, bring_up)
+        except Exception as e:                          # report, never crash the loop
+            out.append(self._completed(cid, action, target, False, f"{type(e).__name__}: {e}", key))
+        return out
+
+    def _restore(self, cid: str, key: str, seq: Seq, bring_up) -> list[Event]:
+        """fleet.restore: recreate VM hosts, then reapply every deployment's desired state.
+        A pinned image the main node no longer has (rebuilt after the sweep) is rebuilt."""
+        out: list[Event] = []
+        spec = self.spec_loader()
+        host_docs = {h.get("host"): h for h in (self.store.query("hosts") if self.store else [])}
+        vms: dict[str, dict] = {}
+        for hid, hs in spec.hosts.items():
+            if hs.kind == "vm" and (host_docs.get(hid) or {}).get("state") != "removed":
+                vms[hid] = {"kind": "vm", "machine_type": hs.machine_type or "e2-small"}
+        for hid, h in host_docs.items():
+            if (h.get("desired") or {}).get("kind") == "vm" and h.get("state") != "removed":
+                vms[hid] = h["desired"]
+        up = {"local"}
+        for hid, desired in sorted(vms.items()):
+            if bring_up(hid, desired, report_as="fleet.restore"):
+                up.add(hid)
+        dep_docs = {d.get("deployment"): d for d in (self.store.query("deployments") if self.store else [])}
+        targets = sorted({did for did, d in dep_docs.items() if d.get("desired") and d.get("state") != "removed"} |
+                         {did for did in spec.deployments if (dep_docs.get(did) or {}).get("state") != "removed"})
+        done, failed = [], []
+        for did in targets:
+            host = did.split("@", 1)[1]
+            if host not in up:
+                failed.append(f"{did} (host {host} is not up)")
+                continue
+            args: dict = {}
+            pinned = (dep_docs.get(did) or {}).get("desired", {}).get("digest") or getattr(spec.deployments.get(did), "digest", "")
+            has = getattr(self.builder, "has", None)
+            if pinned and has is not None and not has(pinned):
+                args["build"] = "1"
+            refusal = ""
+            try:
+                self._plan(did, dict(args))
+            except Exception as e:
+                refusal = str(e)
+            if refusal:
+                failed.append(f"{did}: {refusal}"[:200])
+                continue
+            evs, ok, err = self._deploy(cid, "deployment.apply", did, args, key, seq, report_as="fleet.restore")
+            out += evs
+            (done if ok else failed).append(did if ok else f"{did}: {err}"[:200])
+        ok = not failed and len(up) == len(vms) + 1
+        detail = (f"hosts up: {', '.join(sorted(up))}; deployments: {', '.join(done) or 'none'}"
+                  + (f"; failed: {'; '.join(failed)}" if failed else ""))
+        out.append(self._completed(cid, "fleet.restore", self.engine, ok, detail, key))
+        return out
 
     # ---------------------------------------------------------------- desired state
     def _stored(self, collection: str, doc_id: str) -> dict:
@@ -471,14 +641,21 @@ class CommandHandler:
                 log.info("registered %s", ev["subject"])
         except Exception:
             log.exception("product sync failed; commands are still handled")
-        next_beat = 0.0
-        while not stop():
-            if time.monotonic() >= next_beat:
-                next_beat = time.monotonic() + beat_s
+        import threading
+
+        def beats():
+            while not stop():
                 try:
                     self.beat_hosts()
                 except Exception:
                     log.exception("host heartbeat failed")
+                for _ in range(int(beat_s * 10)):
+                    if stop():
+                        return
+                    time.sleep(0.1)
+        if beat_s > 0:
+            threading.Thread(target=beats, name="host-heartbeats", daemon=True).start()
+        while not stop():
             for d in self.bus.pull(subscription, max_messages=max_messages, timeout_s=timeout_s):
                 d.ack()                                  # at most once; the audit shows what happened
                 try:
@@ -544,6 +721,7 @@ def main(argv: list[str] | None = None) -> int:
     sv.add_argument("--subscription", default="factory-commands-handler")
     sv.add_argument("--repo", default=str(deployspec.ROOT), help="checkout used for deploy/, products/, prompts/ and builds")
     sv.add_argument("--app-dir", default="", help="product checkout with factory/consumer.py (halt/unhalt)")
+    sv.add_argument("--zone", default=os.environ.get("MC_ZONE", "me-west1-a"), help="zone for VM hosts")
     sv.add_argument("--logs-socket", default=LOGS_SOCKET, help="unix socket the console reads logs from ('' = off)")
     sd = sub.add_parser("send")
     sd.add_argument("action")
@@ -566,7 +744,10 @@ def main(argv: list[str] | None = None) -> int:
 
         from mission_control.builder import DockerBuilder
         repo = Path(o.repo)
-        h = CommandHandler(runtime=registry.get("runtime", "docker-local")(), bus=bus, topic=o.events_topic,
+        from mission_control.adapters.runtime.gce import Gce
+        runtime = registry.get("runtime", "fleet")(local=registry.get("runtime", "docker-local")(),
+                                                   gce=Gce(project=o.project, zone=o.zone), store=store)
+        h = CommandHandler(runtime=runtime, bus=bus, topic=o.events_topic,
                            engine=o.engine, spec_loader=lambda: deployspec.load(repo / "deploy", products_dir=repo / "products"),
                            vars={"PROJECT": o.project}, builder=DockerBuilder(repo), store=store,
                            products_dir=repo / "products",

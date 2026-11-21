@@ -160,7 +160,10 @@ def create_app(store: StateStore, *, resolve: Callable[[tuple | None], Operator 
 
     def data_hosts(q: dict) -> dict:
         spec, err = load_spec()
-        return {"hosts": views.hosts(store, views.now(), spec), "spec_error": err}
+        from mission_control.adapters.runtime.gce import MACHINE_TYPES
+        hs = views.hosts(store, views.now(), spec)
+        return {"hosts": hs, "spec_error": err, "machine_types": MACHINE_TYPES,
+                "n_vms": sum(1 for h in hs if h["kind"] == "vm" and h["state"] != "removed")}
 
     def data_deploy(q: dict) -> dict:
         spec, err = load_spec()

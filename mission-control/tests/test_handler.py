@@ -150,8 +150,7 @@ def test_serve_pulls_from_the_commands_subscription():
                        vars={"PROJECT": "p"}, builder=FakeBuilder())
     issue(bus, "factory-commands", "deployment.apply", "compliance@local", who="t", reason="serve test")
     calls = iter([False, True])
-    h.serve("handler", timeout_s=0.1, stop=lambda: next(calls))
+    h.serve("handler", timeout_s=0.1, stop=lambda: next(calls), beat_s=0)
     got = [d.event["type"] for d in bus.pull("writer", max_messages=50, timeout_s=0.1)]
-    assert got[0] == "dev.factory.host.heartbeat"            # hosts report first, then every minute
-    got = got[1:]
+    got = [t for t in got if t != "dev.factory.host.heartbeat"]   # hosts report from their own thread
     assert got[0].endswith("command.issued") and got[-1].endswith("deployment.changed")

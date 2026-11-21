@@ -39,6 +39,10 @@ class DockerBuilder:
         self._prune(c.image)
         return image_id
 
+    def has(self, image_id: str) -> bool:
+        """Whether this node still has the image (it may not after a rebuild)."""
+        return subprocess.run([self.docker, "image", "inspect", image_id], capture_output=True).returncode == 0
+
     def _prune(self, repo: str) -> None:
         """Keep the newest `keep` tags of this image."""
         tags = subprocess.run([self.docker, "image", "ls", repo, "--format", "{{.Tag}}"],
@@ -51,11 +55,16 @@ class FakeBuilder:
     def __init__(self, digest: str = "sha256:" + "b" * 64, fail: bool = False):
         self.digest, self.fail = digest, fail
         self.built: list[str] = []
+        self.images: set[str] = set()
+
+    def has(self, image_id: str) -> bool:
+        return image_id in self.images
 
     def build(self, c: Component) -> Generator[Step, None, str]:
         if self.fail:
             yield Step("build", False, "build failed")
             return ""
         self.built.append(c.name)
+        self.images.add(self.digest)
         yield Step("build", True, f"{c.image} {self.digest[:19]}")
         return self.digest

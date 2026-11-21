@@ -12,7 +12,7 @@ say() { printf '\n==> %s\n' "$*"; }
 
 say "APIs"
 gcloud services enable firestore.googleapis.com pubsub.googleapis.com run.googleapis.com \
-  artifactregistry.googleapis.com cloudscheduler.googleapis.com $G
+  artifactregistry.googleapis.com cloudscheduler.googleapis.com compute.googleapis.com oslogin.googleapis.com $G
 
 say "Firestore (native mode, $FS_LOCATION)"
 # The database survives the weekend sweep, but right after the API is re-enabled
@@ -30,12 +30,13 @@ for t in factory-events factory-events-dlq factory-commands; do
 done
 
 say "Service accounts"
-for sa in factory-vm factory-writer; do
+for sa in factory-vm factory-writer factory-agent; do
   gcloud iam service-accounts describe $sa@$PROJECT.iam.gserviceaccount.com $G >/dev/null 2>&1 ||
     gcloud iam service-accounts create $sa --display-name "mission control: $sa" $G
 done
 VM_SA=factory-vm@$PROJECT.iam.gserviceaccount.com
 WRITER_SA=factory-writer@$PROJECT.iam.gserviceaccount.com
+AGENT_SA=factory-agent@$PROJECT.iam.gserviceaccount.com
 
 say "IAM"
 # A new service account takes a while to become visible to IAM; retry instead of failing.
@@ -57,6 +58,24 @@ for sa in $VM_SA $WRITER_SA; do   # the bridge keeps its cursor in engines/{engi
   retry gcloud projects add-iam-policy-binding $PROJECT --member serviceAccount:$sa \
     --role roles/datastore.user --condition=None
 done
+
+say "Agent hosts (VMs agent-* that the console creates; docs/deploy-and-hosts-plan.md §3)"
+# The agents on those VMs run as factory-agent: publish events, read and write the store.
+retry gcloud pubsub topics add-iam-policy-binding factory-events $G \
+  --member serviceAccount:$AGENT_SA --role roles/pubsub.publisher
+retry gcloud projects add-iam-policy-binding $PROJECT --member serviceAccount:$AGENT_SA \
+  --role roles/datastore.user --condition=None
+# The command handler on factory-1 (factory-vm) creates, logs in to and deletes those VMs,
+# and only those: both grants are limited to instances and disks named agent-*.
+retry gcloud iam service-accounts add-iam-policy-binding $AGENT_SA $G \
+  --member serviceAccount:$VM_SA --role roles/iam.serviceAccountUser
+AGENT_ONLY='(resource.type != "compute.googleapis.com/Instance" && resource.type != "compute.googleapis.com/Disk") || resource.name.extract("/instances/{name}").startsWith("agent-") || resource.name.extract("/disks/{name}").startsWith("agent-")'
+retry gcloud projects add-iam-policy-binding $PROJECT --member serviceAccount:$VM_SA \
+  --role roles/compute.instanceAdmin.v1 \
+  --condition="expression=$AGENT_ONLY,title=factory-agent-hosts-only,description=VMs and disks named agent-*"
+retry gcloud projects add-iam-policy-binding $PROJECT --member serviceAccount:$VM_SA \
+  --role roles/compute.osAdminLogin \
+  --condition="expression=resource.name.extract(\"/instances/{name}\").startsWith(\"agent-\"),title=factory-agent-hosts-login,description=OS Login as admin on agent-* VMs only"
 
 say "Artifact Registry"
 gcloud artifacts repositories describe mission-control --location $REGION $G >/dev/null 2>&1 ||

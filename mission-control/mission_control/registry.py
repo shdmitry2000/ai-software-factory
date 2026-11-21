@@ -27,7 +27,8 @@ BUILTIN: dict[str, dict[str, str]] = {
     "engine": {"archon": "mission_control.adapters.engine.archon"},
     "prompts": {"files": "mission_control.adapters.prompts.files"},
     "runtime": {"fake": "mission_control.adapters.runtime.fake",
-                "docker-local": "mission_control.adapters.runtime.docker_local"},
+                "docker-local": "mission_control.adapters.runtime.docker_local",
+                "fleet": "mission_control.adapters.runtime.fleet"},
     "store": {"memory": "mission_control.adapters.store.memory",
               "firestore": "mission_control.adapters.store.firestore"},
 }

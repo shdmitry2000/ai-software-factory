@@ -21,7 +21,7 @@ import os
 import queue
 import subprocess
 import threading
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from dataclasses import replace
 from pathlib import Path
 
@@ -49,9 +49,16 @@ class DockerLocal:
         self.stop_timeout = stop_timeout
 
     # ------------------------------------------------------------------ docker and files
-    def _run(self, *args: str, check: bool = True, merge: bool = False) -> str:
+    def _cmd(self, *args: str) -> list[str]:
+        """The argv that runs `docker <args>` on this host (docker-ssh wraps it in ssh)."""
+        return [self.docker, *args]
+
+    def _run(self, *args: str, check: bool = True, merge: bool = False, timeout: float | None = None) -> str:
         streams = {"stdout": subprocess.PIPE, "stderr": subprocess.STDOUT if merge else subprocess.PIPE}
-        p = subprocess.run([self.docker, *args], text=True, **streams)
+        try:
+            p = subprocess.run(self._cmd(*args), text=True, timeout=timeout, **streams)
+        except subprocess.TimeoutExpired:
+            raise DockerError(f"docker {args[0]} timed out after {timeout:.0f}s") from None
         if check and p.returncode:
             err = (p.stdout if merge else p.stderr or "").strip()
             raise DockerError(f"docker {args[0]} failed: {err[-400:]}")
@@ -76,7 +83,7 @@ class DockerLocal:
         return self.env_dir / f"{d.component}.env"
 
     def _image_exists(self, ref: str) -> bool:
-        return subprocess.run([self.docker, "image", "inspect", ref], capture_output=True).returncode == 0
+        return subprocess.run(self._cmd("image", "inspect", ref), capture_output=True).returncode == 0
 
     def _containers(self, deployment_id: str = "") -> list[dict]:
         args = ["ps", "-aq", "--filter", f"label={L}managed=1"]
@@ -120,19 +127,9 @@ class DockerLocal:
         validate(d)
         self._check_host(d.host)
 
-        ref = d.ref()
-        if self._image_exists(ref):
-            yield Step("image", True, f"{ref} present")
-        elif d.digest and self._image_exists(d.digest):       # a locally built image, by id
-            ref = d.digest
-            yield Step("image", True, f"local image {d.digest[:19]}")
-        else:
-            try:
-                self._run("pull", "-q", ref)
-            except DockerError as e:
-                yield Step("pull", False, str(e))
-                return
-            yield Step("pull", True, ref)
+        ref = yield from self._ensure_image(d)
+        if not ref:
+            return
 
         secret = self._secret_path(d)
         if d.llm != "none":
@@ -175,6 +172,23 @@ class DockerLocal:
         states = {c["Name"].lstrip("/"): c["State"]["Status"] for c in self._containers(d.id)}
         bad = {n: s for n, s in states.items() if s != "running"}
         yield Step("verify", not bad, "all running" if not bad else f"not running: {bad}")
+
+    def _ensure_image(self, d: Deployment) -> Generator[Step, None, str]:
+        """Make the image present on this host; returns what to run, "" on failure."""
+        ref = d.ref()
+        if self._image_exists(ref):
+            yield Step("image", True, f"{ref} present")
+            return ref
+        if d.digest and self._image_exists(d.digest):       # a locally built image, by id
+            yield Step("image", True, f"local image {d.digest[:19]}")
+            return d.digest
+        try:
+            self._run("pull", "-q", ref)
+        except DockerError as e:
+            yield Step("pull", False, str(e))
+            return ""
+        yield Step("pull", True, ref)
+        return ref
 
     def _run_args(self, d: Deployment, i: int, ref: str, spec: str, secret: Path) -> list[str]:
         name = _name(d, i)
@@ -262,7 +276,7 @@ class DockerLocal:
         try:
             for c in found:
                 name = c["Name"].lstrip("/")
-                p = subprocess.Popen([self.docker, "logs", "-f", "--tail", str(per), name], text=True,
+                p = subprocess.Popen(self._cmd("logs", "-f", "--tail", str(per), name), text=True,
                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=1)
                 procs.append(p)
                 threading.Thread(target=pump, args=(p, f"[{name}] " if len(found) > 1 else ""), daemon=True).start()

@@ -22,6 +22,19 @@ gcloud compute firewall-rules describe allow-iap-ssh-factory $G >/dev/null 2>&1 
 gcloud compute firewall-rules describe allow-iap-archon-factory $G >/dev/null 2>&1 &&
   gcloud compute firewall-rules delete allow-iap-archon-factory $G --quiet
 
+# Agent hosts (VMs agent-* made from the console): SSH only from the main node (tag
+# factory), nothing else inbound. They have no public IP; Cloud NAT gives them egress
+# (apt, Anthropic, GitHub). Google APIs go through Private Google Access.
+gcloud compute firewall-rules describe allow-ssh-factory-to-agents $G >/dev/null 2>&1 ||
+  gcloud compute firewall-rules create allow-ssh-factory-to-agents $G --network default \
+    --direction INGRESS --allow tcp:22 --source-tags factory --target-tags factory-agent
+REGION=${ZONE%-*}
+gcloud compute routers describe factory-router --region $REGION $G >/dev/null 2>&1 ||
+  gcloud compute routers create factory-router --network default --region $REGION $G
+gcloud compute routers nats describe factory-nat --router factory-router --region $REGION $G >/dev/null 2>&1 ||
+  gcloud compute routers nats create factory-nat --router factory-router --region $REGION $G \
+    --auto-allocate-nat-external-ips --nat-all-subnet-ip-ranges
+
 # Service account factory-vm (made by mission-control/infra/setup.sh): may publish to
 # factory-events and keep its bridge cursor in Firestore, nothing else. The project has
 # no default compute SA. Scope cloud-platform: IAM roles, not scopes, limit it.

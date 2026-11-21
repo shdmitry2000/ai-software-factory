@@ -1,5 +1,21 @@
 {% from "_macros.html" import status, act %}
 {% if spec_error %}<section class="card bad">Deploy files: {{ spec_error }}</section>{% endif %}
+{% if can_act %}
+<section class="card">
+  <div class="cardhead"><h2>Fleet</h2><span class="muted">{{ n_vms }} VM host(s) · VMs are deleted by the weekend sweep; Restore brings back every host and deployment</span></div>
+  <form class="settings-form" hx-post="/act" hx-target="#activity" hx-swap="afterbegin" hx-on::after-request="if(event.detail.successful) this.reset()">
+    <input type="hidden" name="action" value="host.create">
+    <label>New VM host <span class="muted">agent- then letters, digits, dashes</span>
+      <input name="target" required pattern="agent-[a-z0-9][a-z0-9-]{0,30}" placeholder="agent-1"></label>
+    <label>Machine type
+      <select name="arg_machine_type">{% for m, what in machine_types.items() %}<option value="{{ m }}">{{ m }}: {{ what }}</option>{% endfor %}</select></label>
+    <label class="wide">Why <input name="reason" required minlength="3" placeholder="goes in the audit log"></label>
+    <button>Create and install</button>
+  </form>
+  <p class="muted">The VM has no public IP; only factory-1 can reach it (SSH). It runs as the <span class="mono">factory-agent</span> service account. Creating and installing takes about 3 minutes; follow the steps above.</p>
+  {{ act('fleet.restore', engine, 'Restore all hosts and deployments', can_act, confirm='Recreate every VM host and reapply every deployment at its pinned image?') }}
+</section>
+{% endif %}
 {% for h in hosts %}
 <section class="card">
   <div class="cardhead">
