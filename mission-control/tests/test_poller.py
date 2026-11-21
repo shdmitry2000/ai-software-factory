@@ -5,6 +5,7 @@ import itertools
 import json
 import random
 import threading
+from pathlib import Path
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -362,3 +363,16 @@ def test_poller_event_ids_fit_the_envelope(env):
     git.set_branch(REPO, long, A)
     sent = poller.step()
     assert all(len(e["id"]) <= 256 and not events.validate(e) for e in sent)
+
+
+def test_without_a_token_poll_slowly_until_the_login_arrives(gh, monkeypatch):
+    from mission_control.adapters.git import github as mod
+    FakeGitHub.routes = {f"/repos/{REPO}/branches?per_page=100": (200, [], {})}
+    tokens = iter(["", "late"])
+    g = GitHubActivity(token_source=lambda: next(tokens), api=gh)
+    p = Poller(g, Bus(), registry.get("store", "memory")(), products_dir=Path("/nonexistent"), engine="factory-1")
+    assert not g.authenticated and p.interval_s == 600
+    now = [mod.time.monotonic() + 301]
+    monkeypatch.setattr(mod.time, "monotonic", lambda: now[0])
+    g.branches(REPO)
+    assert g.authenticated and p.interval_s == 60 and FakeGitHub.seen[-1][2] == "Bearer late"

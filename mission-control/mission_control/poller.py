@@ -57,12 +57,19 @@ def work_item_id(codehost: str, repo: str, n: int) -> str:
 class Poller:
     def __init__(self, git: GitActivity, bus: EventBus, store: StateStore, *, products_dir: Path,
                  engine: str, topic: str = "factory-events", interval_s: int = 60,
-                 clock=time.time) -> None:
+                 anonymous_interval_s: int = 600, clock=time.time) -> None:
         self.git, self.bus, self.store = git, bus, store
         self.products_dir, self.engine, self.topic = Path(products_dir), engine, topic
-        self.interval_s, self.clock = interval_s, clock
+        self.base_interval_s, self.anonymous_interval_s, self.clock = interval_s, anonymous_interval_s, clock
         self.source = f"factory://{engine}/git-poller"
         self.published = self.dropped = 0
+
+    @property
+    def interval_s(self) -> int:
+        """Seconds between polls: slower without a token (anonymous GitHub: 60 requests an hour)."""
+        if getattr(self.git, "authenticated", True):
+            return self.base_interval_s
+        return max(self.base_interval_s, self.anonymous_interval_s)
 
     # ------------------------------------------------------------------ products
     def products(self) -> list[products_mod.Product]:
@@ -363,12 +370,13 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     source = (lambda: "") if o.no_token else gh_token
     git = GitHubActivity(token_source=source)
-    interval = o.interval if git.authenticated else max(o.interval, o.anonymous_interval)
-    if not git.authenticated:
-        log.warning("no GitHub token (no gh login): public repositories only, polling every %ds", interval)
     poller = Poller(git, registry.get("bus", "pubsub")(project=o.project),
                     registry.get("store", "firestore")(project=o.project),
-                    products_dir=Path(o.repo) / "products", engine=o.engine, topic=o.topic, interval_s=interval)
+                    products_dir=Path(o.repo) / "products", engine=o.engine, topic=o.topic,
+                    interval_s=o.interval, anonymous_interval_s=o.anonymous_interval)
+    if not git.authenticated:
+        log.warning("no GitHub token (no gh login yet): public repositories only, polling every %ds; "
+                    "asking again every 5 minutes", poller.interval_s)
     if o.once:
         sent = poller.step()
         for ev in sent:

@@ -14,6 +14,7 @@ import json
 import re
 import socket
 import threading
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -34,6 +35,7 @@ class GitHubActivity:
         self.api, self.timeout_s, self.max_pages, self.user_agent = api.rstrip("/"), timeout_s, max_pages, user_agent
         self._token_source = token_source
         self._token = token or (token_source() if token_source else "")
+        self._asked_at = time.monotonic()
         self._cache: dict[str, tuple[str, object, str]] = {}   # url → (etag, parsed body, next url)
         self._lock = threading.Lock()
         self.requests = self.not_modified = 0
@@ -43,11 +45,19 @@ class GitHubActivity:
     def authenticated(self) -> bool:
         return bool(self._token)
 
+    def _maybe_ask(self) -> None:
+        """Without a token, ask the source again every 5 minutes (the gh login may arrive
+        after the poller started, as it does in rebuild.sh)."""
+        if not self._token and self._token_source is not None and time.monotonic() - self._asked_at >= 300:
+            self._asked_at = time.monotonic()
+            self._token = self._token_source()
+
     # ------------------------------------------------------------------ http
     def _request(self, url: str, *, retry_auth: bool = True) -> tuple[object, str]:
         """(parsed body, next page url) for one GET, through the ETag cache."""
         if not url.startswith(self.api + "/"):
             raise GitError("http", f"refusing a URL outside {self.api}")
+        self._maybe_ask()
         cached = self._cache.get(url)
         req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json",
                                                    "X-GitHub-Api-Version": "2022-11-28",
