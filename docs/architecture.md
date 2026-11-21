@@ -322,11 +322,12 @@ Event types are listed in [`mission-control/schema/types.md`](../mission-control
 ```
 bin/                 login.sh, factory.py, gcp/ (VM, logins, rebuild, env.sh), agents/ (deploy on factory-1), gke/ (parked)
 agents/              compliance/ (agent, rules, reviewer, tests), image/Dockerfile
-deploy/              (planned) components/*.yaml, hosts.yaml, deployments.yaml
+deploy/              components/*.yaml, hosts.yaml, deployments.yaml (schema/deploy.v1.json)
 products/            one YAML per product: repo, base_branch, compliance
 prompts/             PromptRegistry file adapter: <name>/NNNN.md + labels.yaml
 mission-control/
-  mission_control/   ports, registry, config, events, projections, bridge, writer, products
+  mission_control/   ports, registry, config, events, projections, bridge, writer, products,
+                     deployspec (deploy/ files), runtime (CLI)
     adapters/        bus/, store/, engine/archon, codehost/github, prompts/files, runtime/ (fake, docker_local)
   schema/            envelope, data schemas, types.md, examples
   contract_tests/    one suite per port

@@ -273,7 +273,7 @@ deploys; every install, deploy and process control is a command event.
 |---|---|---|
 | R1 | AgentRuntime port, fake adapter, contract tests | ✅ |
 | R2 | `docker-local`; compliance agent as a container on factory-1 (`llm: project`) | ✅ live on factory-1 2026-11-21: heartbeats in `agents/`, `no_rules` for converter #3, credential absent from `docker inspect` |
-| R3 | `deploy/` component, host and deployment files: schema and loader | ☐ |
+| R3 | `deploy/` component, host and deployment files: schema and loader | ✅ `deploy/`, `schema/deploy.v1.json`, `deployspec.py`; `runtime spec` / `apply-spec`; deploy.sh applies from the files (live 2026-11-21) |
 | R4 | Command handler for deployments, progress events | ☐ |
 | R5 | `gce-vm` + `docker-ssh`: sandbox VM hosts, SSH only from factory-1 | ☐ |
 | R6 | Chains: `consumes` → filtered Pub/Sub subscriptions; agents start on events | ☐ |
