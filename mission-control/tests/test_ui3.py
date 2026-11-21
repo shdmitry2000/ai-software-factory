@@ -265,3 +265,12 @@ def test_logs_stream_escapes_and_ends():
     assert "&lt;script&gt;x&lt;/script&gt;" in body and "<script>" not in body
     assert body.strip().endswith("— end of log —</div>")
     assert c.get("/panels/logs/..%2Fetc/stream").status_code in (400, 404)
+
+
+def test_a_deployment_without_desired_state_keeps_its_running_image(env):
+    h, store, rt, builder = env
+    store.upsert("deployments", "compliance@local", {"deployment": "compliance@local", "state": "running", "digest": D2})
+    builder.images.add(D2)
+    _, c = run(h, store, "deployment.apply")
+    assert c["status"] == "succeeded" and builder.built == []
+    assert store.get("deployments", "compliance@local")["desired"]["digest"] == D2

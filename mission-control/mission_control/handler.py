@@ -387,11 +387,14 @@ class CommandHandler:
         checkout's HEAD instead of the pinned digest; `reset` ignores the stored state."""
         spec = self.spec_loader()
         component, host = target.split("@", 1)
-        stored = {} if args.get("reset") else (self._stored("deployments", target).get("desired") or {})
+        doc = {} if args.get("reset") else self._stored("deployments", target)
+        stored = doc.get("desired") or {}
         ds = spec.deployments.get(target) or deployspec.DeploymentSpec(component, host)
         if stored:
             ds = replace(ds, replicas=int(stored.get("replicas", ds.replicas)),
                          products=tuple(stored.get("products") or ds.products), digest=stored.get("digest", ds.digest))
+        elif not ds.digest and doc.get("digest") and doc.get("state") != "removed":
+            ds = replace(ds, digest=doc["digest"])       # running before desired state was kept: keep its image
         if "replicas" in args:
             r = _int(args["replicas"])
             if r is None or not 0 <= r <= 20:
