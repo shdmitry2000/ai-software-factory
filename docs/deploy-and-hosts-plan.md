@@ -3,7 +3,7 @@
 How the factory installs, deploys and runs its parts (agents and system components)
 on the main node and on other servers in the sandbox, all driven from the console.
 
-Status: 2026-11-21. R1–R3 done (compliance agent live on factory-1 since 2026-11-21; deployed from `deploy/`). Replaces the GKE-first approach of Stage O-B and the
+Status: 2026-11-21. R1–R4 done: the compliance agent on factory-1 is deployed by the command handler from `deploy/` (2026-11-21). Replaces the GKE-first approach of Stage O-B and the
 old Stage R (fleet). Architecture: [architecture.md](architecture.md). Console:
 [console-ui-plan.md](console-ui-plan.md).
 
@@ -89,10 +89,11 @@ A deployment line:
   ─▶ command handler (factory-1) ─▶ AgentRuntime adapter for the host kind
        local:  docker on factory-1
        vm:     docker over SSH (DOCKER_HOST=ssh://…) through the internal IP
-  ─▶ steps, each one an event dev.factory.deploy.step {step, ok|failed, output tail}:
+  ─▶ steps, each one an event dev.factory.deployment.step {seq, step, ok, detail}:
        pull image by digest → write env file → create Pub/Sub subscriptions (consumes)
        → run container (restart unless-stopped) → wait for first heartbeat
-  ─▶ dev.factory.command.acknowledged + dev.factory.deployment.applied
+  (command.acknowledged comes first: accepted, or refused with the reason)
+  ─▶ dev.factory.deployment.changed {ok, error, instances}
   ─▶ console shows progress live; the agent appears on the Agents screen
 ```
 
