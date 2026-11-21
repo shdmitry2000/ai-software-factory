@@ -3,7 +3,7 @@
 How the factory installs, deploys and runs its parts (agents and system components)
 on the main node and on other servers in the sandbox, all driven from the console.
 
-Status: 2026-11-21, plan only. Replaces the GKE-first approach of Stage O-B and the
+Status: 2026-11-21. R1 done; R2 code done (live run on factory-1 pending). Replaces the GKE-first approach of Stage O-B and the
 old Stage R (fleet). Architecture: [architecture.md](architecture.md). Console:
 [console-ui-plan.md](console-ui-plan.md).
 
@@ -72,9 +72,11 @@ A deployment line:
 - **Host identity.** Agent hosts run as a new service account `factory-agent`:
   Pub/Sub publisher on `factory-events`, subscriber on its own subscriptions,
   Firestore viewer, Artifact Registry reader. No keys.
-- **The LLM credential.** Pushed by the main node over SSH stdin into
-  `/etc/factory/<component>.env` (root, mode 600) and given to the container as an
-  env file. Never in an image, git, an event, the console page or a log line. The
+- **The LLM credential.** Copied by the main node (from `/root/.factory-env`, over
+  SSH stdin for other hosts) into `/etc/factory/<component>.env`, mode 600, owned by
+  the container's user, and mounted read-only at `/run/factory/llm.env`; the container
+  gets only `FACTORY_ENV_FILE`. Not `docker --env-file`, which would copy the value
+  into `docker inspect`. Never in an image, git, an event, the console page or a log line. The
   console shows only *which* method an agent uses (`project`, `api_key`).
 - **Images.** Built on factory-1 and pushed to Artifact Registry; hosts pull by
   digest, never by tag.

@@ -1,6 +1,7 @@
 # Agent image: Python agents + pinned Claude Code. Build context = the factory repo root.
 #   docker build -f agents/image/Dockerfile -t agent .
-# No credentials inside: on GKE, Claude runs on Vertex AI through Workload Identity.
+# No credentials inside: the runtime mounts the LLM credential at run time
+# (FACTORY_ENV_FILE); Google access comes from the host's service account.
 FROM node:22-bookworm-slim
 
 ARG CLAUDE_CODE_VERSION=2.1.310
@@ -24,7 +25,7 @@ COPY mission-control/schema mission-control/schema
 RUN pip install --no-cache-dir "./mission-control[pubsub,firestore]"
 COPY agents agents
 COPY products products
-# prompts/ is mounted from a ConfigMap by bin/gke/deploy.sh, so a rules change needs no rebuild
+# prompts/ is baked in: a rules change = redeploy (bin/agents/deploy.sh rebuilds in seconds)
 COPY prompts prompts
 
 RUN useradd --uid 10001 --create-home agent

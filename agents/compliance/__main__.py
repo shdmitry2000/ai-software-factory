@@ -3,11 +3,11 @@
     # dry run on a laptop: live GitHub reads, events printed, nothing written anywhere
     PYTHONPATH=mission-control python -m agents.compliance --once --bus memory --print
 
-    # in the GKE pod (Workload Identity: Vertex, Pub/Sub, Firestore; no secrets)
+    # in its container on a host (deployed by mission_control.runtime / the console)
     python -m agents.compliance --bus pubsub --store firestore --interval 600
 
-Settings come from flags or env: GCP_PROJECT, MC_TOPIC, AGENT_ID (pod name),
-AGENT_LOCATION, COMPLIANCE_MODEL, FACTORY_PRODUCT.
+Settings come from flags or env: GCP_PROJECT, MC_TOPIC, AGENT_ID, AGENT_LOCATION,
+COMPLIANCE_MODEL, FACTORY_PRODUCT. FACTORY_ENV_FILE names the mounted LLM credential.
 """
 from __future__ import annotations
 
@@ -41,6 +41,17 @@ class PrintingBus:
         return self.inner.pull(*a, **kw)
 
 
+def load_env_file(path: str) -> None:
+    """Load the LLM credential the runtime mounted (FACTORY_ENV_FILE): `K=V` lines into
+    the environment, so `claude` finds it. Values are never printed."""
+    if not path:
+        return
+    for line in Path(path).read_text().splitlines():
+        key, sep, value = line.strip().removeprefix("export ").partition("=")
+        if sep and key and not key.startswith("#"):
+            os.environ.setdefault(key.strip(), value.strip().strip("'\""))
+
+
 def auth_method() -> str:
     if os.environ.get("CLAUDE_CODE_USE_VERTEX") == "1":
         return "vertex"
@@ -68,6 +79,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--print", action="store_true", help="print every published event")
     a = ap.parse_args(argv)
+    load_env_file(os.environ.get("FACTORY_ENV_FILE", ""))
 
     product = products.load(Path(a.products_dir) / f"{a.product}.yaml")
     cloud = {"project": a.project} if a.project else {}

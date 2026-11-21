@@ -215,6 +215,103 @@ class Notifier(Protocol):
     def send(self, title: str, body: str, *, severity: str = "info", link: str = "") -> None: ...
 
 
+# --------------------------------------------------------------------------- AgentRuntime
+# Hosts run containers; a deployment is one component on one host. Only the main node
+# drives this port. Design: docs/deploy-and-hosts-plan.md.
+
+LLM_METHODS = ("none", "project", "api_key")
+"""How a deployment gets Claude. `project` = the project's own login (subscription token
+or API key, whichever the main node holds); `api_key` = an Anthropic API key only."""
+
+
+@dataclass(frozen=True)
+class Host:
+    id: str                         # "local" = the main node itself; "vm-agents-1" …
+    kind: str                       # local | vm  (later: ssh, gke)
+    address: str = ""
+    state: str = "unknown"          # unknown | installing | healthy | unreachable
+    labels: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class Deployment:
+    """Desired state of one component on one host. Holds no secret: the LLM credential
+    is resolved by the adapter on the host and handed over as a file."""
+    component: str
+    host: str
+    image: str                      # repository[:tag]
+    digest: str = ""                # sha256:… ; pinned when set
+    command: tuple[str, ...] = ()
+    env: dict[str, str] = field(default_factory=dict)        # non-secret settings only
+    llm: str = "none"               # one of LLM_METHODS
+    replicas: int = 1
+    run_as: str = ""                # container uid; the credential file is readable by it alone
+    tmpfs: tuple[str, ...] = ("/tmp",)                        # writable paths (root fs is read-only)
+    cpus: str = ""
+    memory: str = ""
+
+    @property
+    def id(self) -> str:
+        return f"{self.component}@{self.host}"
+
+    def ref(self) -> str:
+        """What the container runtime runs: the digest when pinned, else the image."""
+        if self.digest and self.digest.startswith("sha256:") and "@" not in self.image:
+            base = self.image.rsplit(":", 1)[0] if ":" in self.image.rsplit("/", 1)[-1] else self.image
+            return f"{base}@{self.digest}"
+        return self.image
+
+
+@dataclass(frozen=True)
+class Instance:
+    deployment: str                 # Deployment.id
+    name: str                       # container name
+    host: str
+    state: str                      # running | exited | created | restarting | paused | dead
+    image: str = ""
+    digest: str = ""
+    started_at: str = ""
+
+
+@dataclass(frozen=True)
+class Step:
+    """One step of a long action; the command handler turns each into an event."""
+    step: str
+    ok: bool
+    detail: str = ""                # short, never contains a secret
+
+
+@runtime_checkable
+class AgentRuntime(Protocol):
+    def hosts(self) -> list[Host]: ...
+
+    def create_host(self, host: Host) -> Iterable[Step]:
+        """Create a new host (a sandbox VM). Not every adapter can; those raise ValueError."""
+
+    def install(self, host_id: str) -> Iterable[Step]:
+        """Make a host ready to run containers. Idempotent."""
+
+    def remove_host(self, host_id: str) -> Iterable[Step]: ...
+
+    def apply(self, deployment: Deployment) -> Iterable[Step]:
+        """Make the host match `deployment`. Idempotent: an unchanged spec restarts nothing."""
+
+    def remove(self, deployment_id: str) -> Iterable[Step]: ...
+
+    def start(self, deployment_id: str) -> Iterable[Step]: ...
+
+    def stop(self, deployment_id: str) -> Iterable[Step]: ...
+
+    def restart(self, deployment_id: str) -> Iterable[Step]: ...
+
+    def scale(self, deployment_id: str, replicas: int) -> Iterable[Step]: ...
+
+    def status(self) -> list[Instance]: ...
+
+    def logs(self, deployment_id: str, *, tail: int = 200) -> list[str]:
+        """Last `tail` lines of every replica. Unknown deployment: KeyError."""
+
+
 PORTS: dict[str, type] = {
     "bus": EventBus,
     "store": StateStore,
@@ -225,6 +322,7 @@ PORTS: dict[str, type] = {
     "prompts": PromptRegistry,
     "secrets": Secrets,
     "notifier": Notifier,
+    "runtime": AgentRuntime,
 }
 """Port name (as used in mission-control.yaml) → interface."""
 
@@ -235,6 +333,7 @@ def is_adapter_for(port: str, obj: object) -> bool:
 
 
 __all__ = [
+    "AgentRuntime", "Deployment", "Host", "Instance", "LLM_METHODS", "Step",
     "Change", "CodeHost", "Delivery", "Doc", "EngineAdapter", "Event", "EventBus",
     "MemoryDoc", "MemoryStore", "Notifier", "PORTS", "Prompt", "PromptRegistry", "Secrets", "StateStore", "WorkItem",
     "WorkTracker", "is_adapter_for",

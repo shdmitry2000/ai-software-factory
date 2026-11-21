@@ -107,7 +107,7 @@ Vertex AI is a possible later option per agent.
 | **Console** | factory-1, `127.0.0.1` only | operator UI: status, history, live runs, settings, commands | planned ([console-ui-plan.md](console-ui-plan.md)) |
 | **Command handler** | factory-1 | executes console commands (halt, settings, scale) from `factory-commands` | planned |
 | **Agent hosts** | factory-1 (`local`) and sandbox VMs (`vm`) running Docker | run agents and, later, other system parts | factory-1 running; VM hosts planned (Stage R) |
-| **AgentRuntime** (in the command handler) | factory-1 | install hosts; deploy, start, stop, upgrade, roll back, scale, logs; restore after the sweep | planned ([deploy-and-hosts-plan.md](deploy-and-hosts-plan.md)) |
+| **AgentRuntime** (in the command handler) | factory-1 | install hosts; deploy, start, stop, upgrade, roll back, scale, logs; restore after the sweep | port + `fake` + `docker-local` built (`python3 -m mission_control.runtime`); handler planned ([deploy-and-hosts-plan.md](deploy-and-hosts-plan.md)) |
 | **Compliance agent** | container (`agents/compliance`, image `mission-control/agent`) | advisory review of every open PR head against versioned rules | built; first deploy on factory-1 (R2) |
 | GKE cluster `factory-agents` | – | parked 2026-11-21; scripts kept in `bin/gke/`, not rebuilt after the sweep | parked |
 | **Prompt manager** | git `prompts/` now; MLflow later | versioned, labelled prompts (compliance rules first) | built (file adapter) / planned (service) |
@@ -312,7 +312,7 @@ Event types are listed in [`mission-control/schema/types.md`](../mission-control
 | MemoryStore | product knowledge, holdout scope | gitfiles, firestore (planned) |
 | Secrets | named secrets | Secret Manager (planned) |
 | Notifier | alerts | slack (planned) |
-| AgentRuntime | install hosts; deploy, control, logs, restore | fake, docker-local, docker-ssh, gce-vm (planned); gke (parked) |
+| AgentRuntime | install hosts; deploy, control, logs, restore | fake, docker-local (built); docker-ssh, gce-vm (planned); gke (parked) |
 | BlobStore | large bodies, holdout backups | gcs, memory (planned) |
 | GitActivity | repo changes as events | github poll (planned), webhook (later) |
 | SkillRegistry | versioned skills | git plugin marketplace (planned) |
@@ -320,14 +320,14 @@ Event types are listed in [`mission-control/schema/types.md`](../mission-control
 ## 12. Code layout
 
 ```
-bin/                 login.sh, factory.py, gcp/ (VM, logins, rebuild, env.sh), gke/ (parked)
+bin/                 login.sh, factory.py, gcp/ (VM, logins, rebuild, env.sh), agents/ (deploy on factory-1), gke/ (parked)
 agents/              compliance/ (agent, rules, reviewer, tests), image/Dockerfile
 deploy/              (planned) components/*.yaml, hosts.yaml, deployments.yaml
 products/            one YAML per product: repo, base_branch, compliance
 prompts/             PromptRegistry file adapter: <name>/NNNN.md + labels.yaml
 mission-control/
   mission_control/   ports, registry, config, events, projections, bridge, writer, products
-    adapters/        bus/, store/, engine/archon, codehost/github, prompts/files
+    adapters/        bus/, store/, engine/archon, codehost/github, prompts/files, runtime/ (fake, docker_local)
   schema/            envelope, data schemas, types.md, examples
   contract_tests/    one suite per port
   tests/             unit tests
