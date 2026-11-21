@@ -106,8 +106,8 @@ Vertex AI is a possible later option per agent.
 | **State store** | Firestore `(default)` | `events`, `runs`, `nodes`, `engines`; next `agents`, `compliance`, `products`, `problems`, `work_items` … | running |
 | **Console** (`mission_control/console`, systemd `factory-console`) | factory-1, unix socket `/run/factory-console/sock`, no TCP | operator UI: overview, agents, projects (settings editor), compliance, runs (retries, steps), problems (ack/resolve), audit; halt/unhalt and deployment buttons send commands as the operator | running (UI-0–UI-2; [console-ui-plan.md](console-ui-plan.md)) |
 | **Command handler** (`mission_control/handler.py`, systemd `mission-control-handler`) | factory-1 | executes commands from `factory-commands` one at a time: deployments, product settings, halt/unhalt, problem ack/resolve. Publishes acknowledged, each step and the outcome | running (R4, UI-2) |
-| **Agent hosts** | factory-1 (`local`) and sandbox VMs (`vm`) running Docker | run agents and, later, other system parts | factory-1 running; VM hosts planned (Stage R) |
-| **AgentRuntime** (in the command handler) | factory-1 | install hosts; deploy, start, stop, upgrade, roll back, scale, logs; restore after the sweep | port + `fake` + `docker-local` built (`python3 -m mission_control.runtime`); handler planned ([deploy-and-hosts-plan.md](deploy-and-hosts-plan.md)) |
+| **Agent hosts** | factory-1 (`local`) and sandbox VMs `agent-*` (`vm`) running Docker | run agents and, later, other system parts | factory-1 running; VM hosts created, used and removed from the console (R5) |
+| **AgentRuntime** (in the command handler) | factory-1 | install hosts; deploy, start, stop, upgrade, roll back, scale, logs; restore after the sweep | running: `fleet` = `docker-local` + `docker-ssh` per VM + `gce.py` ([deploy-and-hosts-plan.md](deploy-and-hosts-plan.md)) |
 | **Compliance agent** | container (`agents/compliance`, image `mission-control/agent`) | advisory review of every open PR head against versioned rules | built; first deploy on factory-1 (R2) |
 | GKE cluster `factory-agents` | – | parked 2026-11-21; scripts kept in `bin/gke/`, not rebuilt after the sweep | parked |
 | **Prompt manager** | git `prompts/` now; MLflow later | versioned, labelled prompts (compliance rules first) | built (file adapter) / planned (service) |
@@ -145,10 +145,9 @@ of the factory and are never touched by its scripts.
 | Identity | Used by | Grants (least privilege) |
 |---|---|---|
 | owner (Google account) | Mac scripts, IAP | project owner; IAP tunnel |
-| `factory-vm` SA | factory-1 | Pub/Sub publish `factory-events`; Firestore user; Artifact Registry writer on `mission-control`; creates agent VMs (planned) |
+| `factory-vm` SA | factory-1 | Pub/Sub publish `factory-events`; Firestore user; Artifact Registry writer on `mission-control`; `compute.instanceAdmin.v1` and `compute.osAdminLogin` with IAM conditions: instances and disks named `agent-*` only; user of `factory-agent` |
 | `factory-writer` SA | Cloud Run writer | Pub/Sub subscriber; Firestore user; publish `factory-commands` |
-| `factory-agent` SA (planned) | agent VM hosts | Pub/Sub publish `factory-events` and subscribe to its own subscriptions; Firestore viewer; Artifact Registry reader |
-| `factory-vm` on agent hosts (planned) | factory-1 deploying | `compute.osAdminLogin` on agent hosts only (SSH for deploys) |
+| `factory-agent` SA | agent VM hosts | Pub/Sub publish `factory-events`; Firestore user |
 | LLM credential | engine and agents (`llm: project` or `api_key`) | root-only env file on the host that runs it; pushed by factory-1 over SSH stdin |
 | GitHub: owner's token today | factory-1 engine | to be replaced by GitHub Apps |
 | GitHub Apps (planned) `factory-builder`, `factory-compliance` | engine, compliance agent | builder: contents + PR write; compliance: read + checks/issues write. Keys only on the main node; 1-hour tokens per job |
@@ -160,7 +159,7 @@ The GKE identities (`factory-gke-node`, KSA `agents/compliance`) are parked with
 ```
  operator ─▶ IAP (Google login, iap.tunnelResourceAccessor) ─▶ SSH to factory-1
               └─ port forward -L ─▶ console on 127.0.0.1 (factory-1)
- factory-1 ─▶ agent VM hosts (SSH, internal IP, firewall source 10.208.0.38 only) ─▶ docker
+ factory-1 ─▶ agent VM hosts (SSH, internal IP, firewall: source tag factory only) ─▶ docker
  containers ─▶ Google APIs (Private Google Access, host service account)
  containers ─▶ GitHub, Anthropic (Cloud NAT)
  nobody ─▶ containers (no published ports, no public IPs)
@@ -285,8 +284,8 @@ and is linked per run. Full plan: [console-ui-plan.md](console-ui-plan.md).
 | `nodes/{run}:{node}` | step of a run | writer | running |
 | `engines/{engine}` | engine heartbeat and bridge cursor | writer / bridge | running |
 | `agents/{agent_id}` | agent instance: host, state, model, LLM method, spend | writer | built |
-| `hosts/{host}` | host: kind, state, health, what runs there | writer | planned (R) |
-| `deployments/{id}` | latest state: host, digest, instances, last action and command | writer | running (R4) |
+| `hosts/{host}` | host: kind, state, health (heartbeat every 60 s), address, desired state for restore | writer | running (R5) |
+| `deployments/{id}` | latest state: host, digest, instances, last action and command; desired state; last 5 digests | writer | running (R4, R9) |
 | `compliance/{product}__{pr}` | latest advisory report of a PR | writer | built |
 | `products/{product}` | settings: the file's seed + console overrides (newest per field), effective values, change history | writer | running (UI-2) |
 | `problems/{id}` | open/resolved problems written by scheduled rules (for alerts) | rules | planned (F7); the console derives problems on read today |
@@ -313,7 +312,7 @@ Event types are listed in [`mission-control/schema/types.md`](../mission-control
 | MemoryStore | product knowledge, holdout scope | gitfiles, firestore (planned) |
 | Secrets | named secrets | Secret Manager (planned) |
 | Notifier | alerts | slack (planned) |
-| AgentRuntime | install hosts; deploy, control, logs, restore | fake, docker-local (built); docker-ssh, gce-vm (planned); gke (parked) |
+| AgentRuntime | install hosts; deploy, control, logs, restore | fake, docker-local, docker-ssh, fleet (+ gce.py) built; gke (parked) |
 | BlobStore | large bodies, holdout backups | gcs, memory (planned) |
 | GitActivity | repo changes as events | github poll (planned), webhook (later) |
 | SkillRegistry | versioned skills | git plugin marketplace (planned) |

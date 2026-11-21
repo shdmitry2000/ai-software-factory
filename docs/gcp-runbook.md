@@ -31,6 +31,10 @@ PROJECT=me-sb-dgcp-dpoc-pocyosh-pr ZONE=me-west1-a VM=factory-1 TYPE=e2-standard
 
 - creates firewall rule `allow-iap-ssh-factory` (tcp:22 from `35.235.240.0/20`, tag `factory`);
 - opens only SSH from the IAP range (no rule for 3090; the consoles go over SSH);
+- creates `allow-ssh-factory-to-agents` (tcp:22 from tag `factory` to tag `factory-agent`):
+  the only way into the agent VMs the console creates;
+- creates Cloud Router `factory-router` and NAT `factory-nat` (me-west1): egress for VMs
+  without a public IP (about $1 a day plus traffic);
 - creates the VM with service account `factory-vm` (made by `mission-control/infra/setup.sh`), or attaches it to an existing VM;
 - copies [`bin/bootstrap-ubuntu.sh`](../bin/bootstrap-ubuntu.sh) over and runs it as root:
   git, python3, gh, caddy, bun, uv, Claude Code, Codex.
@@ -169,6 +173,10 @@ stdin (never on a command line) and is what step 3 runs in `rebuild.sh`.
 
 ## Cost
 
+Agent VM hosts (console → Hosts → Add VM host): e2-small about $13/month, e2-medium
+about $26/month, each with a 20 GB disk; at most 3. The sweep deletes them; Restore all
+brings them back.
+
 `e2-standard-2` + 100 GB disk is about $60/month running. A stopped VM costs only the
 disk (~$10). Claude tokens will cost more than the VM. With 8 GB keep `parallel` at 1.
 
@@ -176,5 +184,6 @@ disk (~$10). Claude tokens will cost more than the VM. With 8 GB keep `parallel`
 
 ```bash
 gcloud compute instances delete factory-1 --project me-sb-dgcp-dpoc-pocyosh-pr --zone me-west1-a
-gcloud compute firewall-rules delete allow-iap-ssh-factory allow-iap-archon-factory --project me-sb-dgcp-dpoc-pocyosh-pr
+gcloud compute firewall-rules delete allow-iap-ssh-factory allow-iap-archon-factory allow-ssh-factory-to-agents --project me-sb-dgcp-dpoc-pocyosh-pr
+gcloud compute routers delete factory-router --region me-west1 --project me-sb-dgcp-dpoc-pocyosh-pr   # removes factory-nat too
 ```

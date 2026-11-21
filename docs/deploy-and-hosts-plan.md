@@ -3,7 +3,7 @@
 How the factory installs, deploys and runs its parts (agents and system components)
 on the main node and on other servers in the sandbox, all driven from the console.
 
-Status: 2026-11-21. R1–R4 done: the compliance agent on factory-1 is deployed by the command handler from `deploy/` (2026-11-21). Replaces the GKE-first approach of Stage O-B and the
+Status: 2026-11-21. R1–R5 and R7–R9 done and live; R6 waits for the Stage Q poller. The console creates VM hosts, deploys to them, streams logs, upgrades, rolls back and restores the fleet (drill: §10). Replaces the GKE-first approach of Stage O-B and the
 old Stage R (fleet). Architecture: [architecture.md](architecture.md). Console:
 [console-ui-plan.md](console-ui-plan.md).
 
@@ -64,22 +64,28 @@ A deployment line:
   factory-1; it alone holds the SSH access to other hosts. Nothing is deployed from
   the Mac or from a browser.
 - **Hosts in the sandbox have no public IP.** Firewall: SSH (tcp:22) to agent hosts
-  only from factory-1 (`10.208.0.38/32`); no other inbound. Egress through the
-  existing Cloud NAT. OS Login stays enforced: `factory-vm` gets
+  only from VMs tagged `factory` (rule `allow-ssh-factory-to-agents`, target tag
+  `factory-agent`); no other inbound, not even IAP. Egress through Cloud NAT
+  (`factory-router`/`factory-nat`, made by `bin/gcp/create-factory-vm.sh`). OS Login stays enforced: `factory-vm` gets
   `roles/compute.osAdminLogin` on agent hosts only.
 - **Containers have no inbound ports.** They talk out to Pub/Sub, Firestore, GitHub
   and Anthropic, nothing else.
 - **Host identity.** Agent hosts run as a new service account `factory-agent`:
-  Pub/Sub publisher on `factory-events`, subscriber on its own subscriptions,
-  Firestore viewer, Artifact Registry reader. No keys.
+  Pub/Sub publisher on `factory-events`, Firestore user (made by
+  `mission-control/infra/setup.sh`). No keys.
 - **The LLM credential.** Copied by the main node (from `/root/.factory-env`, over
   SSH stdin for other hosts) into `/etc/factory/<component>.env`, mode 600, owned by
   the container's user, and mounted read-only at `/run/factory/llm.env`; the container
   gets only `FACTORY_ENV_FILE`. Not `docker --env-file`, which would copy the value
   into `docker inspect`. Never in an image, git, an event, the console page or a log line. The
   console shows only *which* method an agent uses (`project`, `api_key`).
-- **Images.** Built on factory-1 and pushed to Artifact Registry; hosts pull by
-  digest, never by tag.
+- **Images.** Built on factory-1 from its checkout and run by image id. A VM host gets
+  the image from factory-1 itself (`docker save | ssh docker load`), so VMs need no
+  registry access; the last 5 builds per component stay on factory-1 for roll back.
+- **Names and grants.** VM hosts are named `agent-*`. factory-vm's
+  `compute.instanceAdmin.v1` and `compute.osAdminLogin` grants carry IAM conditions
+  that limit them to instances and disks named `agent-*`, so the handler cannot touch
+  factory-1 or other workloads. At most 3 VM hosts (handler setting).
 
 ## 4. How a deploy runs
 
@@ -109,11 +115,15 @@ remove. Each is a command; each result is an event.
 
 ## 5. After the weekend sweep
 
-The sweep deletes factory-1 and every agent VM. Firestore keeps `hosts`,
-`deployments` and the desired state in git survives. After `bin/gcp/rebuild.sh`
+The sweep deletes factory-1 and every agent VM. Firestore keeps `hosts/{id}.desired`
+(machine type, zone) and `deployments/{id}.desired` (replicas, products, digest), and
+the desired state in git survives. Console changes win over git until "Reset to git";
+the Deploy screen marks each difference. After `bin/gcp/rebuild.sh`
 brings factory-1 back, the console's **Restore** button (command `fleet.restore`)
 recreates the VM hosts, reinstalls them and reapplies every deployment at its pinned
-digest. Agents read their progress back from Firestore, so nothing is reported twice.
+digest; a pinned image the rebuilt factory-1 no longer has is rebuilt from the
+checkout once. Agents read their progress back from Firestore, so nothing is reported
+twice.
 
 ## 6. AgentRuntime port
 
@@ -127,8 +137,12 @@ start / stop / restart(deployment)       scale(deployment, replicas)
 status() -> list[Instance]               logs(deployment, tail, follow) -> Iterator[str]
 ```
 
-Adapters: `fake` (tests), `docker-local`, `docker-ssh`, `gce-vm` (creates the VM,
-then uses `docker-ssh`). Later: `gke` (from the parked scripts), `ssh` for servers
+Plus `health(host)` (CPU, memory, disk, Docker; a `host.heartbeat` every 60 s) and
+`follow_logs(deployment)`.
+
+Adapters: `fake` (tests), `docker-local`, `docker-ssh` (docker over SSH from the main
+node), `fleet` (routes by host: `local` or a VM; creates VMs through `gce.py`, the
+gcloud CLI as factory-vm). Later: `gke` (from the parked scripts), `ssh` for servers
 outside the sandbox.
 
 ## 7. Console screens added
@@ -146,15 +160,15 @@ Wireframes are in [console-ui-plan.md](console-ui-plan.md#hosts-and-deploy).
 
 | # | Step | Done when |
 |---|---|---|
-| R1 | AgentRuntime port, `fake` adapter, contract tests | contract tests pass on the fake |
-| R2 | `docker-local` adapter; the compliance agent runs as a container on factory-1 with `llm: project` | heartbeat in `agents/` every 60 s; `no_rules` reports for open PRs; no credential in `docker inspect` output beyond the env-file path |
-| R3 | `deploy/components/*.yaml`, `deploy/hosts.yaml`, `deploy/deployments.yaml`: schema, loader, tests | the compliance component and the `local` host load; bad files are refused |
-| R4 | Command handler: `deployment.apply/start/stop/restart/remove`, progress events, schemas | unit tests on the fake; a real apply on factory-1 shows each step as an event |
-| R5 | `gce-vm` + `docker-ssh` adapters: VM without public IP, SA `factory-agent`, SSH only from factory-1 | a throwaway VM is created, installed, runs compliance, is removed; SSH from the Mac to it fails |
+| R1 ✅ | AgentRuntime port, `fake` adapter, contract tests | contract tests pass on the fake |
+| R2 ✅ | `docker-local` adapter; the compliance agent runs as a container on factory-1 with `llm: project` | heartbeat in `agents/` every 60 s; `no_rules` reports for open PRs; no credential in `docker inspect` output beyond the env-file path |
+| R3 ✅ | `deploy/components/*.yaml`, `deploy/hosts.yaml`, `deploy/deployments.yaml`: schema, loader, tests | the compliance component and the `local` host load; bad files are refused |
+| R4 ✅ | Command handler: `deployment.apply/start/stop/restart/remove`, progress events, schemas | unit tests on the fake; a real apply on factory-1 shows each step as an event |
+| R5 ✅ | `fleet` + `docker-ssh` adapters, `gce.py`: VM without public IP, SA `factory-agent`, SSH only from factory-1 | a throwaway VM is created, installed, runs compliance, is removed; SSH from the Mac to it fails |
 | R6 | Chains: `consumes` creates filtered Pub/Sub subscriptions at deploy; agents can start on events as well as on a timer | opening a PR triggers a compliance report within 1 minute (needs the Stage Q poller) |
-| R7 | Logs: tail and follow through the handler | the console shows the last 200 lines and new lines live |
-| R8 | `fleet.restore` after the sweep | weekend drill: one VM host and its agents back with one click, no duplicate reports |
-| R9 | Upgrade and roll back by digest; keep the last 5 digests per component | a rollback returns the previous digest and the agent keeps working |
+| R7 ✅ | Logs: tail and follow through the handler (root-only socket `/run/mission-control-handler/logs.sock`, credential values masked) | the console shows the last 200 lines and new lines live |
+| R8 ◐ | `fleet.restore` after the sweep (simulated drill passed; the real weekend drill is next) | weekend drill: one VM host and its agents back with one click, no duplicate reports |
+| R9 ✅ | Upgrade and roll back by digest; keep the last 5 digests per component | a rollback returns the previous digest and the agent keeps working |
 
 Console steps that go with these: UI-3 in [console-ui-plan.md](console-ui-plan.md).
 
@@ -166,3 +180,15 @@ Console steps that go with these: UI-3 in [console-ui-plan.md](console-ui-plan.m
 | Servers outside the sandbox (`ssh` host kind): needed, and how they reach Pub/Sub | owner |
 | Spend limit per host (VM size and count cap shown in the console) | owner |
 | Does the engine (Archon) itself become a deployable component on another host | later, after R5 |
+
+## 10. Drill, 2026-11-21 (all from the console's endpoints)
+
+| Step | Command | Result |
+|---|---|---|
+| Add VM host | `host.create agent-1` (e2-small) | created at 10.208.0.51, no public IP; SSH, Docker 29.1.3, `/etc/factory`, disk 17% |
+| Deploy to it | `deployment.apply compliance@agent-1` at factory-1's image | image shipped over SSH, credential file 600 (uid 10001), container running; heartbeat from `docker:agent-1/…`; `docker inspect` shows only the file path |
+| Reach it from outside | IAP SSH from the Mac | times out: the firewall admits only factory-1 |
+| Simulated sweep | VM deleted with gcloud behind the factory's back | Hosts showed agent-1 unreachable |
+| Restore all | `fleet.restore factory-1` | agent-1 recreated (new IP), installed, compliance redeployed at the same digest; factory-1's deployment unchanged |
+| Upgrade, roll back | `deployment.apply` with `build`, then with the old digest | new image built from HEAD and running; roll back returned the old digest, agent running |
+| Remove host | `host.remove agent-1` | containers and VM deleted; deployment marked removed; nothing left in Needs you |

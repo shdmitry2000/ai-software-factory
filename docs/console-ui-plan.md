@@ -5,7 +5,7 @@ settings that steer them, and the buttons that act on them. It replaces the earl
 "dashboard on Cloud Run behind Google sign-in" plan, because the owner's rule
 (2026-11-17) is that **everything is used only through the main node**.
 
-Status: 2026-11-21. UI-0, UI-1 and UI-2 done and live on factory-1 (`bin/gcp/console.sh`). Architecture: [architecture.md](architecture.md) §9.
+Status: 2026-11-21. UI-0 to UI-3 done and live on factory-1 (`bin/gcp/console.sh`); UI-3.8 waits for the real weekend drill. Architecture: [architecture.md](architecture.md) §9.
 Data and events: [mission-control-design.md](mission-control-design.md). Build steps
 are below and mirrored in [mission-control-plan.md](mission-control-plan.md) (Stage F).
 
@@ -264,14 +264,14 @@ and tests call.
 
 | # | Step | Done when |
 |---|---|---|
-| UI-3.1 | Hosts screen (read-only), from `hosts` | factory-1 listed with health and what runs on it |
-| UI-3.2 | Deploy screen: deployments with digest and state; start/stop/restart/scale | restarting compliance shows each step live and the audit entry |
-| UI-3.3 | Deploy dialog: component, host, digest, replicas, settings, reason | deploying compliance to factory-1 from the console works end to end |
-| UI-3.4 | Add VM host + install with live progress | a new VM reaches healthy; compliance deployed to it |
-| UI-3.5 | Logs panel (tail + follow) | last 200 lines, then new lines live |
-| UI-3.6 | Upgrade / roll back by digest | a rollback restores the previous digest |
-| UI-3.7 | Chains graph from component files, event counts per edge | the compliance chain shows with today's counts |
-| UI-3.8 | Restore all (after the sweep) | weekend drill passes with one click |
+| UI-3.1 ✅ | Hosts screen (read-only), from `hosts` | factory-1 listed with health and what runs on it |
+| UI-3.2 ✅ | Deploy screen: deployments with digest and state; start/stop/restart/scale | restarting compliance shows each step live and the audit entry |
+| UI-3.3 ✅ | Deploy dialog: component, host, digest, replicas, settings, reason | deploying compliance to factory-1 from the console works end to end |
+| UI-3.4 ✅ | Add VM host + install with live progress | a new VM reaches healthy; compliance deployed to it |
+| UI-3.5 ✅ | Logs panel (tail + follow) | last 200 lines, then new lines live |
+| UI-3.6 ✅ | Upgrade / roll back by digest | a rollback restores the previous digest |
+| UI-3.7 ✅ | Chains graph from component files, event counts per edge | the compliance chain shows with today's counts |
+| UI-3.8 ◐ | Restore all (after the sweep) | weekend drill passes with one click |
 
 ### UI-4 Live runs (Stage H)
 
