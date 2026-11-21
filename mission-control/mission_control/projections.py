@@ -23,6 +23,7 @@ from mission_control.ports import Event, StateStore
 RUNS, NODES, ENGINES = "runs", "nodes", "engines"
 AGENTS, COMPLIANCE = "agents", "compliance"
 COMMANDS, DEPLOYMENTS = "commands", "deployments"
+PRODUCTS, PROBLEM_STATES = "products", "problem_states"
 REPORT_FIELDS = ("product", "pr", "change", "head", "base", "title", "mode", "status", "rules",
                  "findings", "model", "effort", "cost_usd", "diff_truncated", "error")
 TERMINAL_RUN = {"completed", "failed", "cancelled", "abandoned", "lost"}
@@ -160,8 +161,10 @@ def _apply_command(doc: dict | None, ev: Event, kind: str) -> dict:
         steps[f"{data['seq']:03d}"] = {"step": data.get("step"), "ok": data.get("ok"),
                                        "detail": data.get("detail", ""), "time": t}
         d["steps"] = steps
-    elif kind == "deployment.changed":
+    elif kind in ("deployment.changed", "command.completed"):
         d.update(finished_at=t, ok=data.get("ok"), status="succeeded" if data.get("ok") else "failed")
+        if data.get("detail"):
+            d["detail"] = data["detail"]
         if data.get("error"):
             d["error"] = data["error"]
     return d
@@ -182,6 +185,46 @@ def _apply_deployment(doc: dict | None, ev: Event) -> dict:
             d[k] = data[k]
         elif k == "error":
             d.pop("error", None)
+    return d
+
+
+def _apply_product(doc: dict | None, ev: Event, kind: str) -> dict:
+    """products/{name}: seed from the file + console overrides; per field, the newer
+    value wins (seed time vs override time), whatever order the events arrive in."""
+    d, data, t = dict(doc or {}), ev.get("data", {}), ev["time"]
+    d["product"] = data["product"]
+    if kind == "product.registered":
+        if data["seed_hash"] != d.get("seed_hash") and (t, ev["id"]) >= (d.get("seed_time", ""), d.get("seed_event", "")):
+            d.update(seed=dict(data["seed"]), seed_hash=data["seed_hash"], seed_time=t, seed_event=ev["id"])
+    else:
+        overrides = dict(d.get("overrides") or {})
+        cur = overrides.get(data["field"])
+        if cur is None or (t, ev["id"]) >= (cur.get("time", ""), cur.get("event_id", "")):
+            overrides[data["field"]] = {"value": data["new"], "time": t, "event_id": ev["id"],
+                                        "who": data.get("who", ""), "command_id": data.get("command_id", "")}
+        d["overrides"] = overrides
+        hist = [h for h in (d.get("history") or []) if h.get("event_id") != ev["id"]]
+        hist.append({"field": data["field"], "old": data["old"], "new": data["new"], "who": data.get("who", ""),
+                     "reason": data.get("reason", ""), "time": t, "event_id": ev["id"]})
+        d["history"] = sorted(hist, key=lambda h: (h["time"], h["event_id"]))[-50:]
+    eff = dict(d.get("seed") or {})
+    for f, o in (d.get("overrides") or {}).items():
+        if o.get("time", "") >= d.get("seed_time", ""):
+            eff[f] = o["value"]
+    d["effective"] = eff
+    return d
+
+
+def _apply_problem_state(doc: dict | None, ev: Event, kind: str) -> dict:
+    """problem_states/{id}: the latest acknowledgement and resolution, each tied to the
+    occurrence (`since`) it was made for."""
+    d, data, t = dict(doc or {}), ev.get("data", {}), ev["time"]
+    d["problem_id"] = data["problem_id"]
+    key = "ack" if kind == "problem.acknowledged" else "resolved"
+    cur = d.get(key) or {}
+    if (t, ev["id"]) >= (cur.get("time", ""), cur.get("event_id", "")):
+        d[key] = {"who": data.get("who", ""), "reason": data.get("reason", ""), "since": data.get("since", ""),
+                  "time": t, "event_id": ev["id"], "command_id": data.get("command_id", "")}
     return d
 
 
@@ -228,7 +271,32 @@ def project(ev: Event, store: StateStore) -> list[str]:
         key = compliance_key(data["product"], data["pr"])
         store.update(COMPLIANCE, key, lambda doc: _apply_report(doc, ev))
         return [f"{COMPLIANCE}/{key}"]
-    if kind in ("command.issued", "command.acknowledged", "deployment.step", "deployment.changed"):
+    if kind in ("product.registered", "product.updated"):
+        name = (ev.get("data") or {}).get("product")
+        if not name:
+            return []
+        store.update(PRODUCTS, name, lambda doc: _apply_product(doc, ev, kind))
+        return [f"{PRODUCTS}/{name}"]
+    if kind in ("problem.acknowledged", "problem.resolved"):
+        pid = (ev.get("data") or {}).get("problem_id")
+        if not pid:
+            return []
+        store.update(PROBLEM_STATES, pid, lambda doc: _apply_problem_state(doc, ev, kind))
+        return [f"{PROBLEM_STATES}/{pid}"]
+    if kind in ("engine.halted", "engine.unhalted") and ev.get("factoryengine"):
+        data = ev.get("data") or {}
+        eng = data.get("engine") or ev["factoryengine"]
+
+        def apply(doc):
+            d = _base(doc, engine=eng)
+            if ev["time"] >= (d.get("halt_changed_at") or ""):
+                d.update(halted=kind == "engine.halted", halt_changed_at=ev["time"],
+                         halt_by=data.get("who", ""), halt_reason=data.get("reason", ""))
+            return d
+        store.update(ENGINES, eng, apply)
+        return [f"{ENGINES}/{eng}"]
+    if kind in ("command.issued", "command.acknowledged", "deployment.step", "deployment.changed",
+                "command.completed"):
         data = ev.get("data") or {}
         touched = []
         if data.get("command_id"):

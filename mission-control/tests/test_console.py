@@ -37,7 +37,7 @@ def store():
 
 
 def client(store, op):
-    return TestClient(create_app(store, resolve=lambda creds: op, poll_s=0.05))
+    return TestClient(base_url="http://localhost", app=create_app(store, resolve=lambda creds: op, poll_s=0.05))
 
 
 def test_health_is_open_and_checks_the_store(store):
@@ -85,7 +85,7 @@ def test_whoami_and_overview_api(store):
 
 
 def test_dev_operator_only_when_no_peer_credentials(store):
-    c = TestClient(create_app(store, dev_operator="dev-me"))
+    c = TestClient(base_url="http://localhost", app=create_app(store, dev_operator="dev-me"))
     assert c.get("/api/whoami").json() == {"name": "dev-me", "uid": None, "how": "dev", "groups": []}
 
 

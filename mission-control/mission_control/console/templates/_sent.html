@@ -1,0 +1,6 @@
+{% if error %}<div class="sent bad">{{ error }}</div>{% endif %}
+{% for s in sent %}
+<div class="sent" hx-get="/fragments/command/{{ s.command_id }}" hx-trigger="load delay:800ms, sse:changed throttle:2s" hx-swap="innerHTML">
+  Sent <b>{{ s.action }}</b> <span class="mono">{{ s.target }}</span> <span class="muted mono">{{ s.command_id }}</span> · waiting for the handler…
+</div>
+{% endfor %}

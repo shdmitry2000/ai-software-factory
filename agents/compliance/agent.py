@@ -12,6 +12,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from mission_control import products
 from mission_control.ports import Change, CodeHost, Event, EventBus, PromptRegistry, StateStore
 from mission_control.products import Product
 from mission_control.projections import COMPLIANCE, compliance_key
@@ -84,8 +85,19 @@ class ComplianceAgent:
         return (doc.get("head") == head and (doc.get("rules") or {}).get("hash") == rules_hash
                 and doc.get("status") in FINAL)
 
+    def _refresh_settings(self) -> None:
+        """Take the console-editable settings from products/{name}.effective (the console
+        changes them with product.updated); keep the file's values when there is none."""
+        try:
+            doc = self.store.get("products", self.product.name)
+        except Exception:
+            return
+        if doc and doc.get("effective"):
+            self.product = products.apply_effective(self.product, doc["effective"])
+
     def tick(self) -> list[Event]:
         self._roll_day()
+        self._refresh_settings()
         c = self.product.compliance
         if c.mode != "advisory":
             return []

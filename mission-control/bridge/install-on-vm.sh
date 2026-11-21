@@ -35,6 +35,7 @@ ports:
     engine: $ENGINE
     product: $PRODUCT
     pin: "$PIN"
+    app_dir: $HOME/$PRODUCT
   bus:
     adapter: pubsub
     project: $PROJECT
@@ -84,7 +85,7 @@ Wants=network-online.target
 [Service]
 Environment=MC_SCHEMA_DIR=$SRC/mission-control/schema
 Environment=GRPC_VERBOSITY=ERROR
-ExecStart=$VENV/bin/python -m mission_control.handler --project $PROJECT --engine $ENGINE serve --repo $SRC
+ExecStart=$VENV/bin/python -m mission_control.handler --project $PROJECT --engine $ENGINE serve --repo $SRC --app-dir $HOME/$PRODUCT
 Restart=always
 RestartSec=5
 [Install]

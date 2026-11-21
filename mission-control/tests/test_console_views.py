@@ -105,7 +105,7 @@ def test_run_detail(store):
 
 @pytest.fixture
 def web(store):
-    return TestClient(create_app(store, resolve=lambda c: ADMIN, products_dir=REPO / "products"))
+    return TestClient(base_url="http://localhost", app=create_app(store, resolve=lambda c: ADMIN, products_dir=REPO / "products"))
 
 
 @pytest.mark.parametrize("path,expect", [

@@ -51,6 +51,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--archon-url", default="http://localhost:3090/")
     ap.add_argument("--dev-operator", default="", help="local TCP runs only: let this name in")
     ap.add_argument("--demo", action="store_true", help="in-memory store with example rows")
+    ap.add_argument("--read-only", action="store_true", help="no command bus: buttons are hidden")
+    ap.add_argument("--commands-topic", default="factory-commands")
     o = ap.parse_args(argv)
 
     kind = o.store or ("memory" if o.demo else "firestore")
@@ -67,7 +69,13 @@ def main(argv: list[str] | None = None) -> int:
         print("refusing to listen on a non-loopback address; production uses --uds", file=sys.stderr)
         return 2
 
-    app = create_app(store, dev_operator=o.dev_operator, archon_url=o.archon_url, engine=o.engine, demo=o.demo)
+    bus = None
+    if kind == "firestore" and not o.read_only:
+        bus = registry.get("bus", "pubsub")(project=o.project)
+    from mission_control.deployspec import ROOT
+    prompts = registry.get("prompts", "files")(root=str(ROOT / "prompts"))
+    app = create_app(store, dev_operator=o.dev_operator, archon_url=o.archon_url, engine=o.engine, demo=o.demo,
+                     bus=bus, commands_topic=o.commands_topic, prompts=prompts)
     config = uvicorn.Config(app, http=PeerCredH11, log_level="info", access_log=False,
                             proxy_headers=False, server_header=False)
     server = uvicorn.Server(config)

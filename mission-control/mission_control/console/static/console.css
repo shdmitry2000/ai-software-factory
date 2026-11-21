@@ -60,3 +60,22 @@ tr.retry td { background: var(--bg); }
 .problem:last-child { border-bottom:0; } .problem a { color:var(--fg); text-decoration:none; }
 .findings { margin:6px 0 0; padding-left:16px; } .findings li { margin:4px 0; }
 details summary { cursor:pointer; }
+form.act { display:inline-flex; gap:6px; align-items:center; margin:2px 6px 2px 0; }
+form.act input[name=reason] { width:9.5em; }
+input, select, button { font:inherit; color:var(--fg); }
+input, select { padding:4px 7px; border:1px solid var(--line); border-radius:6px; background:var(--panel); }
+button { padding:4px 11px; border:1px solid var(--accent); border-radius:6px; background:var(--accent); color:var(--panel); cursor:pointer; }
+button.danger { background:transparent; color:var(--bad); border-color:var(--bad); }
+button:focus-visible, input:focus-visible, select:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.sent { margin:6px 0; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:var(--bg); font-size:13px; }
+.sent.bad, .bad { color:var(--bad); }
+ol.steps { margin:6px 0 0; padding-left:20px; } ol.steps li.ok::marker { color:var(--good); } ol.steps li.bad::marker { color:var(--bad); }
+details.settings { margin:10px 0 4px; } details.settings > summary { font-weight:600; }
+.settings-form { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:10px 16px; margin:10px 0; align-items:end; }
+.settings-form label { display:flex; flex-direction:column; gap:3px; font-size:12.5px; }
+.settings-form label .muted { font-size:11.5px; }
+.settings-form .wide { grid-column: 1 / -1; }
+.settings-form button { justify-self:start; }
+table.compact td, table.compact th { padding:4px 8px; }
+.problem.acked { opacity:.7; }
+#activity:not(:empty) { margin-bottom:14px; }

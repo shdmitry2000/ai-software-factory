@@ -2,7 +2,8 @@
 {% block title %}{{ label }} · Factory console{% endblock %}
 {% block main %}
 <h1>{{ label }}</h1>
-<div id="screen" hx-get="{{ frag }}" hx-trigger="sse:changed throttle:5s" hx-swap="innerHTML">
+<div id="activity" aria-live="polite"></div>
+<div id="screen" hx-get="{{ frag }}" hx-trigger="sse:changed[!document.querySelector('#screen input:focus, #screen select:focus')] throttle:5s" hx-swap="innerHTML">
 {% include body %}
 </div>
 {% endblock %}

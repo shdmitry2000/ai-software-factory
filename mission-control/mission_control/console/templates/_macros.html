@@ -14,3 +14,13 @@
   {% if q.values()|select|list %}<a href="/{{ path }}">clear</a>{% endif %}
 </form>
 {%- endmacro %}
+{% macro act(action, target, label, can_act, confirm='', danger=false, extra={}) -%}
+{% if can_act %}
+<form class="act" hx-post="/act" hx-target="#activity" hx-swap="afterbegin" hx-on::after-request="if(event.detail.successful) this.reset()"{% if confirm %} hx-confirm="{{ confirm }}"{% endif %}>
+  <input type="hidden" name="action" value="{{ action }}"><input type="hidden" name="target" value="{{ target }}">
+  {% for k, v in extra.items() %}<input type="hidden" name="arg_{{ k }}" value="{{ v }}">{% endfor %}
+  <input name="reason" required minlength="3" placeholder="why?" aria-label="reason for {{ label }}">
+  <button class="{{ 'danger' if danger else '' }}">{{ label }}</button>
+</form>
+{% endif %}
+{%- endmacro %}

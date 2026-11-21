@@ -1,0 +1,16 @@
+{% from "_macros.html" import status, filters %}
+{{ filters('audit', q, options) }}
+<section class="card">
+  <div class="scroll"><table>
+    <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Target</th><th>Reason</th><th>Status</th><th>Result</th><th>Via</th></tr></thead>
+    <tbody>
+    {% for c in commands %}
+    <tr><td class="nowrap">{{ c.ago }}<div class="muted mono">{{ (c.issued_at or '')[:19]|replace('T', ' ') }}</div></td>
+      <td>{{ c.who }}</td><td class="mono">{{ c.action }}</td><td class="mono">{{ c.target }}</td>
+      <td>{{ c.reason }}</td><td>{{ status(c.status) }}</td>
+      <td class="muted">{{ c.result }}{% if c.n_steps %} <span class="nowrap">({{ c.n_steps }} steps)</span>{% endif %}</td>
+      <td class="muted">{{ c.via or '' }}</td></tr>
+    {% else %}<tr><td colspan="8" class="muted">No commands{% if q.values()|select|list %} match these filters{% endif %}.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</section>

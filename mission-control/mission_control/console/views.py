@@ -6,7 +6,7 @@ scheduled problem rules (plan F7) write a `problems` collection.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -156,21 +156,39 @@ def run_filters(store: StateStore) -> dict:
 
 
 # ---------------------------------------------------------------------- products
-def products(store: StateStore, at: datetime, products_dir: Path) -> list[dict]:
+def products(store: StateStore, at: datetime, products_dir: Path, prompts=None) -> list[dict]:
+    """Each product with its current settings: the file's values, overridden by console
+    changes (products/{name}.effective), plus the change history."""
     try:
         items = list(products_mod.load_all(products_dir).values())
     except Exception:                                # a broken file must not take the page down
         items = []
+    docs = {d.get("product"): d for d in store.query("products")}
     all_reports = reports(store, at)
     all_runs = runs(store, at, limit=RUN_LIMIT)
     out = []
     for p in sorted(items, key=lambda p: p.name):
+        doc = docs.get(p.name) or {}
+        p = products_mod.apply_effective(p, doc.get("effective"))
+        overrides = {f: {**o, "ago": ago(o.get("time"), at)} for f, o in (doc.get("overrides") or {}).items()
+                     if o.get("time", "") >= doc.get("seed_time", "")}
+        history = [{**h, "ago": ago(h.get("time"), at)} for h in reversed(doc.get("history") or [])][:10]
+        labels: list[str] = []
+        if prompts is not None:
+            try:
+                labels = sorted(prompts.labels(p.compliance.rules))
+            except Exception:
+                labels = []
+        if p.compliance.label not in labels:
+            labels.append(p.compliance.label)
         rep = [r for r in all_reports if r.get("product") == p.name]
         rn = [r for r in all_runs if r.get("product") == p.name]
         out.append({"name": p.name, "repo": p.repo, "base_branch": p.base_branch, "codehost": p.codehost,
                     "compliance": p.compliance, "reports": rep, "runs": rn[:5],
                     "open_prs": len(rep), "findings": sum(r["n_findings"] for r in rep),
-                    "last_run": rn[0] if rn else None})
+                    "last_run": rn[0] if rn else None, "overrides": overrides, "history": history,
+                    "labels": labels, "modes": sorted(products_mod.MODES),
+                    "registered": bool(doc.get("seed_hash"))})
     return out
 
 
@@ -183,6 +201,13 @@ class Problem:
     detail: str = ""
     link: str = ""
     since: str = ""
+    key: str = ""          # what it is about: engine, agent, deployment, run, product__pr
+    acked_by: str = ""
+    ack_reason: str = ""
+
+    @property
+    def id(self) -> str:
+        return f"{self.kind}:{self.key}"
 
 
 def problems(store: StateStore, at: datetime) -> list[Problem]:
@@ -190,39 +215,77 @@ def problems(store: StateStore, at: datetime) -> list[Problem]:
     for e in engines(store, at):
         if not e["alive"]:
             out.append(Problem("critical", "engine.silent", f"Engine {e.get('engine')} is silent",
-                               f"last heartbeat {e['ago']}", "/agents", e.get("last_heartbeat", "")))
+                               f"last heartbeat {e['ago']}", "/agents", e.get("last_heartbeat", ""), e.get("engine", "")))
         elif e.get("halted"):
             out.append(Problem("warning", "engine.halted", f"Engine {e.get('engine')} is halted",
-                               "no new laps start until it is unhalted", "/agents"))
+                               f"no new laps start until it is unhalted{' · by ' + e['halt_by'] if e.get('halt_by') else ''}{': ' + e['halt_reason'] if e.get('halt_reason') else ''}",
+                               "/agents", e.get("halt_changed_at", ""), e.get("engine", "")))
     for a in agents(store, at):
         if not a["fresh"] and a.get("state") != "stopped":
             out.append(Problem("warning", "agent.silent", f"Agent {a.get('agent_id')} is silent",
-                               f"last heartbeat {a['ago']}", "/agents", a.get("last_heartbeat", "")))
+                               f"last heartbeat {a['ago']}", "/agents", a.get("last_heartbeat", ""), a.get("agent_id", "")))
     for d in deployments(store, at):
         if d.get("state") not in ("running", "removed"):
             out.append(Problem("warning", "deployment.down", f"Deployment {d.get('deployment')} is {d.get('state')}",
-                               f"last action {d.get('last_action')} {d['ago']}", "/", d.get("updated_at", "")))
+                               f"last action {d.get('last_action')} {d['ago']}", "/agents", d.get("updated_at", ""), d.get("deployment", "")))
         if d.get("last_ok") is False:
             out.append(Problem("critical", "deployment.failed",
                                f"Last {d.get('last_action')} on {d.get('deployment')} failed",
-                               str(d.get("error", ""))[:300], "/audit", d.get("updated_at", "")))
+                               str(d.get("error", ""))[:300], "/audit", d.get("updated_at", ""), d.get("deployment", "")))
     for r in runs(store, at):
         last = r["chain"][-1] if r["chain"] else r       # only the latest attempt counts
         age = age_s(last.get("ended_at"), at)
         if last.get("status") == "failed" and age is not None and age < FAILED_WINDOW_S:
             out.append(Problem("warning", "run.failed", f"Run {last.get('workflow') or ''} failed",
                                f"{last.get('failure_class') or ''} at {last.get('failed_node') or '?'} · {last.get('product') or ''}",
-                               f"/runs/{last.get('run')}", last.get("ended_at", "")))
+                               f"/runs/{last.get('run')}", last.get("ended_at", ""), last.get("run", "")))
         if last.get("stuck"):
             out.append(Problem("critical", "run.stuck", f"Run {last.get('workflow') or ''} looks stuck",
                                f"no event for over {STUCK_S // 60} min", f"/runs/{last.get('run')}",
-                               last.get("last_event_at", "")))
+                               last.get("last_event_at", ""), last.get("run", "")))
     for rep in reports(store, at):
         if rep.get("status") in ("error", "capped"):
             out.append(Problem("warning", f"compliance.{rep['status']}",
                                f"Compliance {rep['status']} on {rep.get('product')} #{rep.get('pr')}",
-                               str(rep.get("error", ""))[:300], "/compliance", rep.get("reported_at", "")))
+                               str(rep.get("error", ""))[:300], "/compliance", rep.get("reported_at", ""),
+                               f"{rep.get('product')}__{rep.get('pr')}"))
         elif rep.get("top_severity") == "high":
             out.append(Problem("info", "compliance.high", f"High-severity finding on {rep.get('product')} #{rep.get('pr')}",
-                               rep["findings"][0].get("title", ""), "/compliance", rep.get("reported_at", "")))
-    return sorted(out, key=lambda p: (SEVERITY_ORDER[p.severity], p.since or "~"))
+                               rep["findings"][0].get("title", ""), "/compliance", rep.get("reported_at", ""),
+                               f"{rep.get('product')}__{rep.get('pr')}"))
+    states = {d.get("problem_id"): d for d in store.query("problem_states")}
+    shown: list[Problem] = []
+    for p in out:
+        st = states.get(p.id) or {}
+        res, ack = st.get("resolved") or {}, st.get("ack") or {}
+        if res and res.get("since", "") == p.since:
+            continue                                   # resolved by an operator for this occurrence
+        if ack and ack.get("since", "") == p.since:
+            p = replace(p, acked_by=ack.get("who", ""), ack_reason=ack.get("reason", ""))
+        shown.append(p)
+    return sorted(shown, key=lambda p: (bool(p.acked_by), SEVERITY_ORDER[p.severity], p.since or "~"))
+
+
+# ---------------------------------------------------------------------- audit
+def audit(store: StateStore, at: datetime, *, who: str = "", action: str = "", status: str = "",
+          limit: int = 200) -> list[dict]:
+    rows = store.query("commands", order_by="issued_at", descending=True, limit=limit)
+    out = []
+    for c in rows:
+        if who and c.get("who") != who:
+            continue
+        if action and not str(c.get("action", "")).startswith(action):
+            continue
+        if status and c.get("status") != status:
+            continue
+        steps = [v for _, v in sorted((c.get("steps") or {}).items())]
+        out.append({**c, "ago": ago(c.get("issued_at"), at), "n_steps": len(steps),
+                    "result": c.get("refusal") or c.get("error") or c.get("detail") or ""})
+    return out
+
+
+def audit_filters(store: StateStore) -> dict:
+    rows = store.query("commands", order_by="issued_at", descending=True, limit=200)
+    return {"who": sorted({r.get("who") for r in rows if r.get("who")}),
+            "action": sorted({str(r.get("action", "")).split(".")[0] for r in rows if r.get("action")}),
+            "status": sorted({r.get("status") for r in rows if r.get("status")})}

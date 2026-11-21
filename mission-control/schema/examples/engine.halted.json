@@ -1,0 +1,17 @@
+{
+  "specversion": "1.0",
+  "id": "engine-halted:d00dfeed1234",
+  "source": "factory://factory-1/command-handler",
+  "type": "dev.factory.engine.halted",
+  "subject": "engine/factory-1",
+  "time": "2026-11-21T18:00:00Z",
+  "datacontenttype": "application/json",
+  "factoryengine": "factory-1",
+  "data": {
+    "engine": "factory-1",
+    "who": "operator",
+    "reason": "bad merge on main",
+    "command_id": "d00dfeed1234",
+    "via": "console"
+  }
+}

@@ -221,9 +221,11 @@ class ArchonEngine:
     """Reads Archon's database read-only; the cursor is the events table's rowid."""
 
     def __init__(self, db: str, engine: str, product: str = "", slots: int = 1,
-                 pin: str = "", graph_loader: GraphLoader = graph_from_source) -> None:
+                 pin: str = "", graph_loader: GraphLoader = graph_from_source, app_dir: str = "") -> None:
         self.db = Path(os.path.expanduser(db))
         self.engine, self.product, self.slots, self.pin = engine, product, slots, pin
+        # The product checkout: consumer.py halt/pause leave .factory/STOP and .factory/PAUSE there.
+        self.app_dir = Path(os.path.expanduser(app_dir)) if app_dir else None
         self.graph_loader = graph_loader
 
     def _connect(self) -> sqlite3.Connection:
@@ -250,7 +252,11 @@ class ArchonEngine:
         if self.db.exists():
             with self._connect() as con:
                 busy = con.execute(f"select count(*) from {RUNS} where status in ('running','pending')").fetchone()[0]
-        data: dict[str, Any] = {"slots": {"total": self.slots, "busy": int(busy)}, "halted": False, "paused": False}
+        halted = paused = False
+        if self.app_dir is not None:
+            halted = (self.app_dir / ".factory" / "STOP").exists()
+            paused = (self.app_dir / ".factory" / "PAUSE").exists()
+        data: dict[str, Any] = {"slots": {"total": self.slots, "busy": int(busy)}, "halted": halted, "paused": paused}
         if self.pin:
             data["archon_pin"] = self.pin
         return {
@@ -262,6 +268,6 @@ class ArchonEngine:
 
 @register("engine", "archon")
 def make(db: str = "~/.archon/archon.db", engine: str = "", product: str = "", slots: int = 1,
-         pin: str = "", **_ignored) -> ArchonEngine:
+         pin: str = "", app_dir: str = "", **_ignored) -> ArchonEngine:
     return ArchonEngine(db=db, engine=engine or os.uname().nodename.split(".")[0], product=product,
-                        slots=int(slots), pin=pin)
+                        slots=int(slots), pin=pin, app_dir=app_dir)

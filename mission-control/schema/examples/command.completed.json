@@ -1,0 +1,17 @@
+{
+  "specversion": "1.0",
+  "id": "command-completed:d00dfeed1234",
+  "source": "factory://factory-1/command-handler",
+  "type": "dev.factory.command.completed",
+  "subject": "engine/factory-1/command/d00dfeed1234",
+  "time": "2026-11-21T18:00:00Z",
+  "datacontenttype": "application/json",
+  "factoryengine": "factory-1",
+  "data": {
+    "command_id": "d00dfeed1234",
+    "action": "engine.halt",
+    "target": "factory-1",
+    "ok": true,
+    "detail": "Local launch brake set."
+  }
+}

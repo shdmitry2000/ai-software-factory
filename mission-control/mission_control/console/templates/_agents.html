@@ -1,15 +1,18 @@
-{% from "_macros.html" import status %}
+{% from "_macros.html" import status, act %}
 <section class="card">
   <h2>Engines</h2>
   <div class="scroll"><table>
-    <thead><tr><th></th><th>Engine</th><th>Heartbeat</th><th>State</th><th>Slots</th><th>Archon pin</th></tr></thead>
+    <thead><tr><th></th><th>Engine</th><th>Heartbeat</th><th>State</th><th>Slots</th><th>Archon pin</th><th>Control</th></tr></thead>
     <tbody>
     {% for e in engines %}
     <tr><td><span class="dot {{ 'on' if e.alive else 'off' }}"></span></td><td><b>{{ e.engine }}</b></td>
       <td class="nowrap">{{ e.ago }}</td>
       <td>{% if e.halted %}{{ status('halted') }}{% elif e.paused %}{{ status('paused') }}{% else %}{{ status('running' if e.alive else 'silent') }}{% endif %}</td>
-      <td class="mono">{{ e.slots if e.slots is not none else '' }}</td><td class="mono">{{ (e.archon_pin or '')[:8] }}</td></tr>
-    {% else %}<tr><td colspan="6" class="muted">No engine has reported.</td></tr>{% endfor %}
+      <td class="mono">{% if e.slots %}{{ e.slots.busy }}/{{ e.slots.total }}{% endif %}</td><td class="mono">{{ (e.archon_pin or '')[:8] }}</td>
+      <td>{% if e.halted %}<div class="muted">halted{% if e.halt_by %} by {{ e.halt_by }}{% endif %}{% if e.halt_reason %}: {{ e.halt_reason }}{% endif %}</div>
+            {{ act('engine.unhalt', e.engine, 'Unhalt', can_act) }}
+          {% else %}{{ act('engine.halt', e.engine, 'Halt', can_act, confirm='Halt ' ~ e.engine ~ '? No new laps start until it is unhalted; running laps continue.', danger=true) }}{% endif %}</td></tr>
+    {% else %}<tr><td colspan="7" class="muted">No engine has reported.</td></tr>{% endfor %}
     </tbody>
   </table></div>
 </section>
@@ -31,14 +34,18 @@
 <section class="card">
   <h2>Deployments</h2>
   <div class="scroll"><table>
-    <thead><tr><th>Deployment</th><th>State</th><th>Instances</th><th>Image</th><th>Last action</th><th>When</th></tr></thead>
+    <thead><tr><th>Deployment</th><th>State</th><th>Instances</th><th>Image</th><th>Last action</th><th>When</th><th>Control</th></tr></thead>
     <tbody>
     {% for d in deployments %}
     <tr><td><b>{{ d.deployment }}</b></td><td>{{ status(d.state) }}</td>
       <td class="mono">{% for i in d.instances or [] %}{{ i.name }} {{ i.state }}<br>{% endfor %}</td>
       <td class="mono">{{ (d.digest or '')[7:19] }}</td>
-      <td>{{ d.last_action }} {% if d.last_ok is false %}{{ status('failed') }}{% endif %}</td><td class="nowrap">{{ d.ago }}</td></tr>
-    {% else %}<tr><td colspan="6" class="muted">Nothing deployed.</td></tr>{% endfor %}
+      <td>{{ d.last_action }} {% if d.last_ok is false %}{{ status('failed') }}{% endif %}</td><td class="nowrap">{{ d.ago }}</td>
+      <td>{% if d.state != 'removed' %}
+        {% if d.state == 'running' %}{{ act('deployment.restart', d.deployment, 'Restart', can_act) }}{{ act('deployment.stop', d.deployment, 'Stop', can_act, confirm='Stop ' ~ d.deployment ~ '?', danger=true) }}
+        {% else %}{{ act('deployment.start', d.deployment, 'Start', can_act) }}{% endif %}
+      {% endif %}</td></tr>
+    {% else %}<tr><td colspan="7" class="muted">Nothing deployed.</td></tr>{% endfor %}
     </tbody>
   </table></div>
 </section>

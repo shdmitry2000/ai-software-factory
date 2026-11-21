@@ -884,6 +884,237 @@
         }
       },
       "additionalProperties": false
+    },
+    "product.registered": {
+      "type": "object",
+      "required": [
+        "product",
+        "seed",
+        "seed_hash"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "product": {
+          "type": "string"
+        },
+        "seed": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        },
+        "seed_hash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "source": {
+          "type": "string"
+        }
+      }
+    },
+    "product.updated": {
+      "type": "object",
+      "required": [
+        "product",
+        "field",
+        "old",
+        "new",
+        "who",
+        "reason",
+        "command_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "product": {
+          "type": "string"
+        },
+        "field": {
+          "enum": [
+            "base_branch",
+            "compliance.mode",
+            "compliance.label",
+            "compliance.daily_cap_usd"
+          ]
+        },
+        "old": {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ]
+        },
+        "new": {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ]
+        },
+        "who": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        }
+      }
+    },
+    "engine.halted": {
+      "type": "object",
+      "required": [
+        "engine"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "engine": {
+          "type": "string"
+        },
+        "who": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        },
+        "via": {
+          "enum": [
+            "console",
+            "cli",
+            "consumer"
+          ]
+        }
+      }
+    },
+    "engine.unhalted": {
+      "type": "object",
+      "required": [
+        "engine"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "engine": {
+          "type": "string"
+        },
+        "who": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        },
+        "via": {
+          "enum": [
+            "console",
+            "cli",
+            "consumer"
+          ]
+        }
+      }
+    },
+    "problem.acknowledged": {
+      "type": "object",
+      "required": [
+        "problem_id",
+        "who",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "problem_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 200
+        },
+        "since": {
+          "type": "string"
+        },
+        "who": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        }
+      }
+    },
+    "problem.resolved": {
+      "type": "object",
+      "required": [
+        "problem_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "problem_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 200
+        },
+        "since": {
+          "type": "string"
+        },
+        "who": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        },
+        "by_rule": {
+          "type": "boolean"
+        }
+      }
+    },
+    "command.completed": {
+      "type": "object",
+      "required": [
+        "command_id",
+        "action",
+        "target",
+        "ok"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        },
+        "action": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "detail": {
+          "type": "string",
+          "maxLength": 600
+        },
+        "error": {
+          "type": "string",
+          "maxLength": 600
+        }
+      }
     }
   }
 }

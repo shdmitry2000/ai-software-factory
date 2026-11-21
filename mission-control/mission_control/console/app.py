@@ -7,23 +7,30 @@ holdout text) reaches the browser.
 
 Live updates: `/stream` (SSE) sends `changed` when a new event is stored; each screen's
 main section re-fetches its own fragment on that signal (throttled in the page).
+
+Actions (UI-2): every button sends a `command.issued` on factory-commands, as the
+operator the socket identified, with the reason they typed; the command handler on the
+main node executes it. The console never writes to the store. Requests that change
+anything must come from htmx (HX-Request header) on a localhost origin, and every
+request must name a localhost Host, so another web page cannot act through the tunnel.
 """
 from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from mission_control import handler as handler_mod
 from mission_control.console import views
 from mission_control.console.peercred import GROUP, Operator, operator_for
 from mission_control.deployspec import ROOT
-from mission_control.ports import StateStore
+from mission_control.ports import EventBus, StateStore
 
 HERE = Path(__file__).resolve().parent
 
@@ -35,14 +42,17 @@ SCREENS = [
     ("problems", "Problems", "UI-1"), ("memories", "Memories", "UI-6"), ("prompts", "Prompts", "UI-6"),
     ("audit", "Audit", "UI-2"),
 ]
-BUILT = {"UI-0", "UI-1"}
+BUILT = {"UI-0", "UI-1", "UI-2"}
+LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1", "console")
 OPEN_PATHS = ("/api/health", "/static/")
 
 
 def create_app(store: StateStore, *, resolve: Callable[[tuple | None], Operator | None] | None = None,
                dev_operator: str = "", archon_url: str = "http://localhost:3090/",
                engine: str = "factory-1", poll_s: float = 1.5, demo: bool = False,
-               products_dir: str | Path = ROOT / "products") -> FastAPI:
+               products_dir: str | Path = ROOT / "products", bus: EventBus | None = None,
+               commands_topic: str = "factory-commands", prompts=None,
+               allowed_hosts: tuple[str, ...] = LOCAL_HOSTS) -> FastAPI:
     """`resolve` maps the socket peer (pid, uid, gid) to an Operator; `dev_operator`
     lets a local TCP run (no peer credentials) in under that name, for development."""
     app = FastAPI(title="Factory console", docs_url=None, redoc_url=None, openapi_url="/api/openapi.json")
@@ -53,6 +63,9 @@ def create_app(store: StateStore, *, resolve: Callable[[tuple | None], Operator 
 
     @app.middleware("http")
     async def who(request: Request, call_next):
+        host = (urlparse(f"//{request.headers.get('host', '')}").hostname or "").strip("[]")
+        if host not in allowed_hosts:              # DNS rebinding: only our own names
+            return JSONResponse({"error": "unexpected Host header"}, status_code=421)
         op = resolve(request.scope.get("peercred"))
         if op is None and dev_operator:
             op = Operator(dev_operator, None, True, "dev")
@@ -79,7 +92,7 @@ def create_app(store: StateStore, *, resolve: Callable[[tuple | None], Operator 
         probs = views.problems(store, at)
         return {"engines": views.engines(store, at), "agents": views.agents(store, at),
                 "deployments": views.deployments(store, at), "commands": views.commands(store, at),
-                "needs": [p for p in probs if p.severity != "info"], "events": recent()}
+                "needs": [p for p in probs if p.severity != "info" and not p.acked_by], "events": recent()}
 
     def data_agents(q: dict) -> dict:
         at = views.now()
@@ -87,7 +100,7 @@ def create_app(store: StateStore, *, resolve: Callable[[tuple | None], Operator 
                 "deployments": views.deployments(store, at)}
 
     def data_projects(q: dict) -> dict:
-        return {"products": views.products(store, views.now(), pdir)}
+        return {"products": views.products(store, views.now(), pdir, prompts)}
 
     def data_compliance(q: dict) -> dict:
         at = views.now()
@@ -106,13 +119,21 @@ def create_app(store: StateStore, *, resolve: Callable[[tuple | None], Operator 
     def data_problems(q: dict) -> dict:
         return {"problems": views.problems(store, views.now())}
 
+    def data_audit(q: dict) -> dict:
+        at = views.now()
+        return {"commands": views.audit(store, at, who=q.get("who", ""), action=q.get("action", ""),
+                                        status=q.get("status", "")),
+                "q": q, "options": views.audit_filters(store)}
+
     SCREEN_DATA = {"": data_overview, "agents": data_agents, "projects": data_projects,
-                   "compliance": data_compliance, "runs": data_runs, "problems": data_problems}
-    FILTERS = {"compliance": ("product", "status"), "runs": ("status", "product", "workflow")}
+                   "compliance": data_compliance, "runs": data_runs, "problems": data_problems,
+                   "audit": data_audit}
+    FILTERS = {"compliance": ("product", "status"), "runs": ("status", "product", "workflow"),
+               "audit": ("who", "action", "status")}
 
     def ctx(request: Request, active: str, **kw) -> dict:
         return {"screens": SCREENS, "built": BUILT, "active": active, "op": request.state.operator,
-                "archon_url": archon_url, "engine": engine, "demo": demo, **kw}
+                "archon_url": archon_url, "engine": engine, "demo": demo, "can_act": bus is not None, **kw}
 
     def query_of(request: Request, screen: str) -> dict:
         return {k: request.query_params.get(k, "") for k in FILTERS.get(screen, ())}
@@ -154,6 +175,87 @@ def create_app(store: StateStore, *, resolve: Callable[[tuple | None], Operator 
             return templates.TemplateResponse(request, "placeholder.html",
                                               ctx(request, "runs", label="Run not found", stage="-"), status_code=404)
         return templates.TemplateResponse(request, "run.html", ctx(request, "runs", run=r))
+
+    # ------------------------------------------------------------------ actions
+    def refuse_unsafe(request: Request) -> str:
+        if request.headers.get("hx-request") != "true":
+            return "actions must come from the console page"
+        origin = request.headers.get("origin")
+        if origin and (urlparse(origin).hostname or "").strip("[]") not in allowed_hosts:
+            return "cross-origin request refused"
+        if bus is None:
+            return "this console is read-only (no command bus configured)"
+        return ""
+
+    def send(request: Request, action: str, target: str, reason: str, args: dict) -> dict:
+        ev = handler_mod.issue(bus, commands_topic, action, target, who=request.state.operator.name,
+                               reason=reason, args=args, engine=engine, via="console")
+        return {"command_id": ev["data"]["command_id"], "action": action, "target": target}
+
+    def sent_response(request: Request, sent: list[dict], error: str = "", status_code: int = 200):
+        return templates.TemplateResponse(request, "_sent.html", {"sent": sent, "error": error},
+                                          status_code=status_code)
+
+    @app.post("/act", response_class=HTMLResponse)
+    async def act(request: Request):
+        why = refuse_unsafe(request)
+        if why:
+            return sent_response(request, [], why, 403)
+        form = await request.form()
+        action, target = str(form.get("action", "")), str(form.get("target", ""))
+        reason = str(form.get("reason", "")).strip()
+        if len(reason) < 3:
+            return sent_response(request, [], "say why (at least 3 characters); it goes in the audit log", 400)
+        args = {k[4:]: str(v) for k, v in form.items() if k.startswith("arg_") and str(v) != ""}
+        if "replicas" in args:
+            try:
+                args["replicas"] = int(args["replicas"])
+            except ValueError:
+                return sent_response(request, [], "replicas must be a whole number", 400)
+        try:
+            sent = [await asyncio.to_thread(send, request, action, target, reason, args)]
+        except ValueError as e:
+            return sent_response(request, [], str(e)[:300], 400)
+        return sent_response(request, sent)
+
+    @app.post("/settings/{product}", response_class=HTMLResponse)
+    async def settings(request: Request, product: str):
+        """One product.update per changed field, each carrying the value the operator saw."""
+        why = refuse_unsafe(request)
+        if why:
+            return sent_response(request, [], why, 403)
+        form = await request.form()
+        reason = str(form.get("reason", "")).strip()
+        if len(reason) < 3:
+            return sent_response(request, [], "say why (at least 3 characters); it goes in the audit log", 400)
+        from mission_control.products import EDITABLE
+        changes = []
+        for f in EDITABLE:
+            new, old = form.get(f"new:{f}"), form.get(f"old:{f}")
+            if new is None or old is None:
+                continue
+            new, old = str(new).strip(), str(old)
+            same = new == old
+            if f == "compliance.daily_cap_usd":
+                try:
+                    same = float(new) == float(old)
+                except ValueError:
+                    same = False
+            if not same:
+                changes.append((f, old, new))
+        if not changes:
+            return sent_response(request, [], "nothing changed")
+        sent = []
+        for f, old, new in changes:
+            sent.append(await asyncio.to_thread(send, request, "product.update", product, reason,
+                                                {"field": f, "old": old, "new": new}))
+        return sent_response(request, sent)
+
+    @app.get("/fragments/command/{cid}", response_class=HTMLResponse)
+    async def command_fragment(request: Request, cid: str):
+        c = await asyncio.to_thread(store.get, "commands", cid)
+        steps = [v for _, v in sorted(((c or {}).get("steps") or {}).items())]
+        return templates.TemplateResponse(request, "_command.html", {"c": c, "cid": cid, "steps": steps})
 
     # ------------------------------------------------------------------ api
     @app.get("/api/health")

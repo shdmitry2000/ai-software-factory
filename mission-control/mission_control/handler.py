@@ -1,10 +1,13 @@
-"""Command handler on the main node: executes console/CLI commands (Stage R4).
+"""Command handler on the main node: executes console/CLI commands (Stages R4, UI-2).
 
     command.issued on factory-commands
       → copied to factory-events (the audit trail has every command, refused or not)
       → command.acknowledged (accepted, or refused with the reason)
-      → one deployment.step per step the AgentRuntime reports
-      → deployment.changed (outcome + instances)
+      → deployment.*: one deployment.step per runtime step, then deployment.changed
+        product.update: product.updated (old value must still match), command.completed
+        engine.halt/unhalt: consumer.py halt/unhalt in the app, engine.halted/unhalted,
+                            command.completed
+        problem.ack/resolve: problem.acknowledged/resolved, command.completed
 
 Commands run one at a time. A delivery is acked when received (a command is never run
 twice by redelivery); a redelivered command id is also skipped.
@@ -23,20 +26,34 @@ import logging
 import os
 import re
 import socket
+import subprocess
 import sys
 import time
 import uuid
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 
 from mission_control import deployspec, events
-from mission_control.ports import AgentRuntime, Event, EventBus, StateStore, Step
+from mission_control import products as products_mod
+from mission_control.ports import AgentRuntime, Event, EventBus, PromptRegistry, StateStore, Step
 
 log = logging.getLogger("mission_control.handler")
 
-ACTIONS = {"deployment.apply", "deployment.start", "deployment.stop", "deployment.restart",
-           "deployment.remove", "deployment.scale"}
 DEPLOYMENT_ID = re.compile(r"^[a-z][a-z0-9-]*@[a-z][a-z0-9-]*$")
+PRODUCT_ID = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+PROBLEM_ID = re.compile(r"^[a-z_]+\.[a-z_]+:[^/\s]{1,180}$")
+DEPLOYMENT_ACTIONS = {"deployment.apply", "deployment.start", "deployment.stop", "deployment.restart",
+                      "deployment.remove", "deployment.scale"}
+ACTIONS = DEPLOYMENT_ACTIONS | {"product.update", "engine.halt", "engine.unhalt", "problem.ack", "problem.resolve"}
+
+
+def run_consumer(app_dir: Path, verb: str) -> tuple[bool, str]:
+    """`python3 factory/consumer.py <verb>` in the product checkout (halt / unhalt)."""
+    p = subprocess.run(["python3", "factory/consumer.py", verb], cwd=app_dir,
+                       capture_output=True, text=True, timeout=120)
+    out = (p.stdout or p.stderr).strip().splitlines()
+    return p.returncode == 0, (out[-1] if out else f"exit {p.returncode}")[:500]
 
 
 @dataclass
@@ -49,6 +66,10 @@ class CommandHandler:
     vars: dict[str, str] = field(default_factory=dict)
     builder: object | None = None
     store: StateStore | None = None
+    products_dir: Path | None = None
+    prompts: PromptRegistry | None = None
+    app_dir: Path | None = None
+    consumer: Callable[[Path, str], tuple[bool, str]] = run_consumer
     _seen: set[str] = field(default_factory=set)
 
     # ---------------------------------------------------------------- events
@@ -89,6 +110,9 @@ class CommandHandler:
         out.append(self._publish("dev.factory.command.acknowledged", f"command-ack:{cid}",
                                  f"engine/{self.engine}/command/{cid}", ack, key))
         if refusal:
+            return out
+        if action not in DEPLOYMENT_ACTIONS:
+            out += self._run_other(cid, action, target, args, data, key)
             return out
 
         host = target.split("@", 1)[1]
@@ -134,6 +158,16 @@ class CommandHandler:
     def _check(self, action: str, target: str, args: dict) -> str:
         if action not in ACTIONS:
             return f"unknown action {action!r}; known: {', '.join(sorted(ACTIONS))}"
+        if action == "product.update":
+            return self._check_product(target, args)
+        if action in ("engine.halt", "engine.unhalt"):
+            if target != self.engine:
+                return f"this handler controls engine {self.engine!r}, not {target!r}"
+            if self.app_dir is None or not (self.app_dir / "factory" / "consumer.py").exists():
+                return "no product checkout with factory/consumer.py is configured on this engine"
+            return ""
+        if action in ("problem.ack", "problem.resolve"):
+            return "" if PROBLEM_ID.match(target) else f"not a problem id: {target!r}"
         if not DEPLOYMENT_ID.match(target):
             return f"target must be a deployment id like compliance@local, not {target!r}"
         if action == "deployment.scale":
@@ -170,10 +204,119 @@ class CommandHandler:
         else:
             yield from getattr(self.runtime, action.split(".", 1)[1])(target)
 
+    # ---------------------------------------------------------------- products, engine, problems
+    def _product_file(self, name: str) -> products_mod.Product | None:
+        if self.products_dir is None:
+            return None
+        path = self.products_dir / f"{name}.yaml"
+        return products_mod.load(path) if path.exists() else None
+
+    def _effective(self, name: str) -> dict | None:
+        doc = None
+        if self.store is not None:
+            try:
+                doc = self.store.get("products", name)
+            except Exception:
+                doc = None
+        if doc and doc.get("effective"):
+            return doc["effective"]
+        p = self._product_file(name)
+        return products_mod.flatten(p) if p else None
+
+    def _check_product(self, name: str, args: dict) -> str:
+        if not PRODUCT_ID.match(name):
+            return f"not a product name: {name!r}"
+        eff = self._effective(name)
+        if eff is None:
+            return f"no product {name!r} (products/{name}.yaml)"
+        f = args.get("field")
+        if f not in products_mod.EDITABLE:
+            return f"field must be one of {', '.join(products_mod.EDITABLE)}"
+        if "old" not in args or "new" not in args:
+            return "product.update needs args.old (the value you saw) and args.new"
+        labels = None
+        if f == "compliance.label" and self.prompts is not None:
+            labels = sorted(self.prompts.labels(eff.get("compliance.rules", "compliance/rules")))
+        try:
+            new = products_mod.check_value(f, args["new"], labels=labels)
+            old = products_mod.check_value(f, args["old"]) if f != "compliance.label" else str(args["old"])
+        except ValueError as e:
+            return str(e)
+        cur = eff.get(f)
+        same = (float(cur) == float(old)) if f == "compliance.daily_cap_usd" else (str(cur) == str(old))
+        if not same:
+            return f"stale: {f} is now {cur!r}, not {args['old']!r}; reload and try again"
+        if (float(cur) == new) if f == "compliance.daily_cap_usd" else (str(cur) == new):
+            return f"{f} is already {cur!r}"
+        args["new"], args["old"] = new, cur
+        return ""
+
+    def _completed(self, cid: str, action: str, target: str, ok: bool, detail: str, key: str) -> Event:
+        data = {"command_id": cid, "action": action, "target": target, "ok": ok}
+        data["detail" if ok else "error"] = detail[:600]
+        return self._publish("dev.factory.command.completed", f"command-completed:{cid}",
+                             f"engine/{self.engine}/command/{cid}", data, key)
+
+    def _run_other(self, cid: str, action: str, target: str, args: dict, cmd: dict, key: str) -> list[Event]:
+        who, reason = cmd.get("who", ""), cmd.get("reason", "")
+        out: list[Event] = []
+        try:
+            if action == "product.update":
+                out.append(self._publish("dev.factory.product.updated", f"product-updated:{cid}", f"product/{target}",
+                                         {"product": target, "field": args["field"], "old": args["old"],
+                                          "new": args["new"], "who": who, "reason": reason, "command_id": cid}, key))
+                out.append(self._completed(cid, action, target, True,
+                                           f"{args['field']}: {args['old']} → {args['new']}", key))
+            elif action in ("engine.halt", "engine.unhalt"):
+                verb = action.split(".", 1)[1]
+                ok, msg = self.consumer(self.app_dir, verb)
+                if ok:
+                    out.append(self._publish(f"dev.factory.engine.{verb}ed", f"engine-{verb}ed:{cid}",
+                                             f"engine/{target}", {"engine": target, "who": who, "reason": reason,
+                                                                  "command_id": cid, "via": cmd.get("via", "cli")}, key))
+                out.append(self._completed(cid, action, target, ok, msg, key))
+            else:
+                kind = "acknowledged" if action == "problem.ack" else "resolved"
+                eid = f"problem-{'ack' if kind == 'acknowledged' else 'resolved'}:{cid}"
+                data = {"problem_id": target, "who": who, "reason": reason, "command_id": cid}
+                if args.get("since"):
+                    data["since"] = str(args["since"])[:64]
+                out.append(self._publish(f"dev.factory.problem.{kind}", eid, f"problem/{target}", data, key))
+                out.append(self._completed(cid, action, target, True, f"problem {kind}", key))
+        except Exception as e:                          # report, never crash the loop
+            out.append(self._completed(cid, action, target, False, f"{type(e).__name__}: {e}", key))
+        return out
+
+    def sync_products(self) -> list[Event]:
+        """Send product.registered for every product file whose settings changed."""
+        out: list[Event] = []
+        if self.products_dir is None:
+            return out
+        for name, p in sorted(products_mod.load_all(self.products_dir).items()):
+            h = products_mod.seed_hash(p)
+            doc = None
+            if self.store is not None:
+                try:
+                    doc = self.store.get("products", name)
+                except Exception:
+                    doc = None
+            if doc and doc.get("seed_hash") == h:
+                continue
+            out.append(self._publish("dev.factory.product.registered", f"product-registered:{name}:{h[7:19]}",
+                                     f"product/{name}", {"product": name, "seed": products_mod.flatten(p),
+                                                         "seed_hash": h, "source": f"products/{name}.yaml"},
+                                     f"product-{name}"))
+        return out
+
     # ---------------------------------------------------------------- loop
     def serve(self, subscription: str, *, max_messages: int = 5, timeout_s: float = 10.0,
               stop: Callable[[], bool] = lambda: False) -> None:
         log.info("handling commands from %s as %s", subscription, self.engine)
+        try:
+            for ev in self.sync_products():
+                log.info("registered %s", ev["subject"])
+        except Exception:
+            log.exception("product sync failed; commands are still handled")
         while not stop():
             for d in self.bus.pull(subscription, max_messages=max_messages, timeout_s=timeout_s):
                 d.ack()                                  # at most once; the audit shows what happened
@@ -214,13 +357,15 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     sv = sub.add_parser("serve")
     sv.add_argument("--subscription", default="factory-commands-handler")
-    sv.add_argument("--repo", default=str(deployspec.ROOT), help="checkout used for deploy/ and builds")
+    sv.add_argument("--repo", default=str(deployspec.ROOT), help="checkout used for deploy/, products/, prompts/ and builds")
+    sv.add_argument("--app-dir", default="", help="product checkout with factory/consumer.py (halt/unhalt)")
     sd = sub.add_parser("send")
     sd.add_argument("action")
     sd.add_argument("target")
     sd.add_argument("--reason", required=True)
     sd.add_argument("--replicas", type=int)
     sd.add_argument("--digest", default="")
+    sd.add_argument("--arg", action="append", default=[], help="KEY=VALUE for args (e.g. field=..., old=..., new=...)")
     sd.add_argument("--wait", action="store_true", help="follow commands/{id} until it finishes")
     sd.add_argument("--timeout", type=float, default=900)
     o = ap.parse_args(argv)
@@ -237,7 +382,10 @@ def main(argv: list[str] | None = None) -> int:
         repo = Path(o.repo)
         h = CommandHandler(runtime=registry.get("runtime", "docker-local")(), bus=bus, topic=o.events_topic,
                            engine=o.engine, spec_loader=lambda: deployspec.load(repo / "deploy", products_dir=repo / "products"),
-                           vars={"PROJECT": o.project}, builder=DockerBuilder(repo), store=store)
+                           vars={"PROJECT": o.project}, builder=DockerBuilder(repo), store=store,
+                           products_dir=repo / "products",
+                           prompts=registry.get("prompts", "files")(root=str(repo / "prompts")),
+                           app_dir=Path(o.app_dir) if o.app_dir else None)
         h.serve(o.subscription)
         return 0
 
@@ -246,6 +394,12 @@ def main(argv: list[str] | None = None) -> int:
         args["replicas"] = o.replicas
     if o.digest:
         args["digest"] = o.digest
+    for pair in o.arg:
+        k, sep, v = pair.partition("=")
+        if not sep:
+            print(f"--arg needs KEY=VALUE, got {pair!r}", file=sys.stderr)
+            return 2
+        args[k] = v
     ev = issue(bus, o.commands_topic, o.action, o.target, who=_who(), reason=o.reason, args=args, engine=o.engine)
     cid = ev["data"]["command_id"]
     print(f"issued {cid}: {o.action} {o.target}")

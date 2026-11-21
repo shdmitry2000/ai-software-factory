@@ -46,8 +46,8 @@ new version (`…v2`), never an edit.
 | `dev.factory.engine.registered` | `engine/{engine}` | a machine asked to join | join agent (P3) |
 | `dev.factory.engine.approved` | `engine/{engine}` | the owner approved it | dashboard (P3) |
 | `dev.factory.engine.revoked` | `engine/{engine}` | its token was revoked | dashboard (P3) |
-| `dev.factory.engine.halted` | `engine/{engine}` | launches blocked | `consumer.py halt` |
-| `dev.factory.engine.unhalted` | `engine/{engine}` | launches allowed | `consumer.py unhalt` |
+| `dev.factory.engine.halted` | `engine/{engine}` | launches blocked (who, why) | command handler (`consumer.py halt`) |
+| `dev.factory.engine.unhalted` | `engine/{engine}` | launches allowed (who, why) | command handler (`consumer.py unhalt`) |
 | `dev.factory.engine.auth_changed` | `engine/{engine}` | sign-in method added, removed, failed a test call (never the secret) | AgentAuth (P3) |
 
 ## Agents (any runtime) and compliance
@@ -96,10 +96,14 @@ new version (`…v2`), never an edit.
 |---|---|---|---|
 | `dev.factory.problem.opened` | `problem/{id}` | a rule opened a problem | writer / scheduler rules |
 | `dev.factory.problem.resolved` | `problem/{id}` | it cleared | same |
+| `dev.factory.problem.acknowledged` | `problem/{id}` | an operator saw it and took it (who, why); applies to this occurrence | command handler |
 | `dev.factory.command.issued` | `engine/{engine}/command/{id}` | an operator asked for an action (deployment.apply/start/stop/restart/remove/scale; later halt, approve, settings); who and why | console / CLI → `factory-commands`; the handler copies it to `factory-events` |
 | `dev.factory.command.acknowledged` | `engine/{engine}/command/{id}` | the handler accepted or refused it (with the reason) | command handler (factory-1) |
 | `dev.factory.deployment.step` | `deployment/{id}` | one step of a command on a deployment (build, image, credential, run, verify …) | command handler |
 | `dev.factory.deployment.changed` | `deployment/{id}` | the command's outcome and the deployment's instances after it | command handler |
+| `dev.factory.command.completed` | `engine/{engine}/command/{id}` | outcome of a command that is not a deployment (product, engine, problem) | command handler |
+| `dev.factory.product.registered` | `product/{name}` | the product file's settings (seed), sent when the file changes | command handler at start |
+| `dev.factory.product.updated` | `product/{name}` | one setting changed from the console: field, old, new, who, why | command handler |
 | `dev.factory.queue.updated` | `queue/{product}` | the coordinator's ordered queue and reasons | coordinator (P4) |
 
 ## Id formats
