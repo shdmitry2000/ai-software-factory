@@ -224,6 +224,14 @@ LLM_METHODS = ("none", "project", "api_key")
 or API key, whichever the main node holds); `api_key` = an Anthropic API key only."""
 
 
+SECRET_WORDS = ("TOKEN", "KEY", "SECRET", "PASSWORD", "CREDENTIAL")
+
+
+def looks_secret(name: str) -> bool:
+    """A variable name that suggests a secret; such names never go in a deployment."""
+    return any(w in name.upper() for w in SECRET_WORDS)
+
+
 @dataclass(frozen=True)
 class Host:
     id: str                         # "local" = the main node itself; "vm-agents-1" …
@@ -333,7 +341,7 @@ def is_adapter_for(port: str, obj: object) -> bool:
 
 
 __all__ = [
-    "AgentRuntime", "Deployment", "Host", "Instance", "LLM_METHODS", "Step",
+    "AgentRuntime", "Deployment", "Host", "Instance", "LLM_METHODS", "Step", "looks_secret",
     "Change", "CodeHost", "Delivery", "Doc", "EngineAdapter", "Event", "EventBus",
     "MemoryDoc", "MemoryStore", "Notifier", "PORTS", "Prompt", "PromptRegistry", "Secrets", "StateStore", "WorkItem",
     "WorkTracker", "is_adapter_for",

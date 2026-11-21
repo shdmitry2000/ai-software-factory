@@ -1,6 +1,9 @@
 """Drive the AgentRuntime port from a shell on the main node (until the console's
-command handler does it, Stage R4). Standard library only, so it runs with the
-system python3 on factory-1.
+command handler does it, Stage R4). `spec` and `apply-spec` read the deploy/ files
+(need pyyaml and jsonschema: run through uv); the other commands are standard library.
+
+    python3 -m mission_control.runtime spec                       # check deploy/, show the plan
+    python3 -m mission_control.runtime apply-spec compliance@local --var PROJECT=p --digest sha256:…
 
     python3 -m mission_control.runtime apply --component compliance --image factory/agent:abc \\
         --digest sha256:… --llm project --run-as 10001 --tmpfs /tmp --tmpfs /home/agent \\
@@ -24,7 +27,7 @@ def _env(pairs: list[str]) -> dict[str, str]:
     for p in pairs:
         k, sep, v = p.partition("=")
         if not sep:
-            raise SystemExit(f"--env needs KEY=VALUE, got {p!r}")
+            raise SystemExit(f"expected KEY=VALUE, got {p!r}")
         out[k] = v
     return out
 
@@ -56,6 +59,13 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--cpus", default="")
     a.add_argument("--memory", default="")
     a.add_argument("command", nargs="*")
+    sp = sub.add_parser("spec")
+    sp.add_argument("--deploy-dir", default="")
+    ap_ = sub.add_parser("apply-spec")
+    ap_.add_argument("deployment")
+    ap_.add_argument("--deploy-dir", default="")
+    ap_.add_argument("--digest", default="")
+    ap_.add_argument("--var", action="append", default=[], help="PLACEHOLDER=value, e.g. PROJECT=my-project")
     sub.add_parser("status")
     sub.add_parser("hosts")
     lg = sub.add_parser("logs")
@@ -68,9 +78,33 @@ def main(argv: list[str] | None = None) -> int:
     sc.add_argument("replicas", type=int)
     o = ap.parse_args(argv)
 
+    if o.cmd in ("spec", "apply-spec"):
+        from mission_control import deployspec
+        try:
+            spec = deployspec.load(o.deploy_dir) if o.deploy_dir else deployspec.load()
+        except deployspec.SpecError as e:
+            print(e, file=sys.stderr)
+            return 2
+        if o.cmd == "spec":
+            print("hosts:       " + ", ".join(f"{h.id} ({h.kind})" for h in spec.hosts.values()))
+            print("components:  " + ", ".join(f"{c.name} (llm {c.llm})" for c in spec.components.values()))
+            for ds in spec.deployments.values():
+                print(f"deployment:  {ds.id}  replicas {ds.replicas}  products {', '.join(ds.products) or '-'}"
+                      f"  digest {ds.digest[:19] or '(fresh build)'}")
+            for a, kind, b in spec.chains():
+                print(f"chain:       {a} --{kind}--> {b}")
+            return 0
+        try:
+            d = deployspec.resolve(spec, o.deployment, vars=_env(o.var), digest=o.digest)
+        except (KeyError, deployspec.SpecError) as e:
+            print(f"error: {e.args[0] if isinstance(e, KeyError) else e}", file=sys.stderr)
+            return 2
+
     settings = {k: v for k, v in (("env_dir", o.env_dir), ("login_file", o.login_file)) if v}
     rt = registry.get("runtime", o.adapter)(**settings)
     try:
+        if o.cmd == "apply-spec":
+            return _show(rt.apply(d))
         if o.cmd == "apply":
             d = Deployment(component=o.component, host=o.host, image=o.image, digest=o.digest,
                            command=tuple(o.command), env=_env(o.env), llm=o.llm, replicas=o.replicas,

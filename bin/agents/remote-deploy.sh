@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # From the Mac: ship this repo's committed HEAD to the main node and run
 # bin/agents/deploy.sh there. Only the main node builds and runs containers.
-#   bin/agents/remote-deploy.sh            # env: LLM=project|api_key|none
+#   bin/agents/remote-deploy.sh [compliance@local]     # a deployment from deploy/deployments.yaml
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd -P)
 source "$ROOT/bin/gcp/env.sh"
@@ -20,5 +20,5 @@ D=/root/factory-deploy
 if [ -d \$D/.git ]; then git -C \$D fetch -q /tmp/factory.bundle HEAD && git -C \$D checkout -q --detach FETCH_HEAD
 else git clone -q /tmp/factory.bundle \$D; fi
 rm -f /tmp/factory.bundle
-LLM=${LLM:-project} bash \$D/bin/agents/deploy.sh
+bash \$D/bin/agents/deploy.sh ${1:-compliance@local}
 EOF

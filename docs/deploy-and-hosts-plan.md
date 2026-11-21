@@ -3,7 +3,7 @@
 How the factory installs, deploys and runs its parts (agents and system components)
 on the main node and on other servers in the sandbox, all driven from the console.
 
-Status: 2026-11-21. R1 and R2 done (compliance agent live on factory-1 since 2026-11-21). Replaces the GKE-first approach of Stage O-B and the
+Status: 2026-11-21. R1–R3 done (compliance agent live on factory-1 since 2026-11-21; deployed from `deploy/`). Replaces the GKE-first approach of Stage O-B and the
 old Stage R (fleet). Architecture: [architecture.md](architecture.md). Console:
 [console-ui-plan.md](console-ui-plan.md).
 
@@ -37,8 +37,8 @@ image: me-west1-docker.pkg.dev/<project>/mission-control/agent   # built on fact
 command: [python, -m, agents.compliance, --bus, pubsub, --store, firestore]
 llm: project            # project | api_key | none   (vertex later)
 consumes:               # what starts its work (Pub/Sub subscription with a filter)
-  - type: dev.factory.pr.opened
-  - type: dev.factory.pr.updated
+  - type: dev.factory.pullrequest.opened
+  - type: dev.factory.pullrequest.updated
 emits:
   - dev.factory.compliance.reported
   - dev.factory.agent.heartbeat

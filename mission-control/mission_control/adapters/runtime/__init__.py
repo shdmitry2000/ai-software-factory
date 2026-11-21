@@ -5,7 +5,7 @@ import hashlib
 import json
 from dataclasses import asdict, replace
 
-from mission_control.ports import LLM_METHODS, Deployment
+from mission_control.ports import LLM_METHODS, Deployment, looks_secret
 
 CREDENTIAL_KEYS = {"project": ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"),
                    "api_key": ("ANTHROPIC_API_KEY",)}
@@ -20,7 +20,7 @@ def validate(d: Deployment) -> None:
     if d.replicas < 0:
         raise ValueError("replicas must be >= 0")
     for k in d.env:
-        if any(word in k.upper() for word in ("TOKEN", "KEY", "SECRET", "PASSWORD")):
+        if looks_secret(k):
             raise ValueError(f"env {k!r} looks like a secret; secrets never go in a deployment")
 
 
