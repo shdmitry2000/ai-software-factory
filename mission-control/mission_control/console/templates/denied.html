@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Not allowed · Factory console</title>
+<link rel="stylesheet" href="/static/console.css"></head>
+<body><main class="denied"><h1>Not allowed</h1>
+<p>You are connected as <b>{{ name }}</b>, who is not in the <span class="mono">{{ group }}</span> group on the main node.</p>
+<p>An admin adds you with <span class="mono">sudo gpasswd -a {{ name }} {{ group }}</span> on factory-1; <span class="mono">bin/gcp/console.sh</span> does it for OS Login admins.</p>
+</main></body></html>

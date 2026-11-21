@@ -6,9 +6,10 @@ requires-python = ">=3.11"
 dependencies = ["pyyaml>=6", "jsonschema>=4.23", "rfc3339-validator>=0.1.4"]
 
 [project.optional-dependencies]
-test = ["pytest>=8", "jsonschema>=4.23", "rfc3339-validator>=0.1.4"]
+test = ["pytest>=8", "jsonschema>=4.23", "rfc3339-validator>=0.1.4", "httpx>=0.27"]
 pubsub = ["google-cloud-pubsub>=2.25"]
 firestore = ["google-cloud-firestore>=2.19"]
+console = ["fastapi>=0.115", "uvicorn>=0.32", "jinja2>=3.1"]
 
 [build-system]
 requires = ["hatchling"]

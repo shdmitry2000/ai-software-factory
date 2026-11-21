@@ -5,8 +5,8 @@
 # The factory's pinned Archon tree must stay byte-for-byte clean (consumer.py refuses to
 # run otherwise), so the console runs from its own copy of the same commit, where the web
 # UI is built. Both share ARCHON_HOME (~/.archon), so the console shows the factory's runs.
-# Reach it from a laptop with:
-#   gcloud compute start-iap-tunnel factory-1 3090 --local-host-port=localhost:3090 --zone ...
+# Reach it from a laptop with bin/gcp/console.sh (forwards localhost:3090 over SSH;
+# no firewall rule for 3090 exists).
 set -euo pipefail
 export PATH="$HOME/.bun/bin:$HOME/.local/bin:$PATH"
 

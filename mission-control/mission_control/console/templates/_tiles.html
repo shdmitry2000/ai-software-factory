@@ -1,0 +1,36 @@
+<div class="grid">
+  <section class="card">
+    <h2>Needs you</h2>
+    {% if needs %}<ul class="needs">{% for n in needs %}<li>{{ n }}</li>{% endfor %}</ul>
+    {% else %}<p class="ok">Nothing right now.</p>{% endif %}
+  </section>
+  <section class="card">
+    <h2>Engines</h2>
+    {% for e in engines %}
+    <div class="row"><span class="dot {{ 'on' if e.alive else 'off' }}"></span><b>{{ e.engine }}</b>
+      <span class="muted">heartbeat {{ e.ago }}{% if e.halted %} · halted{% endif %}{% if e.paused %} · paused{% endif %}</span></div>
+    {% else %}<p class="muted">No engine has reported.</p>{% endfor %}
+  </section>
+  <section class="card">
+    <h2>Agents</h2>
+    {% for a in agents %}
+    <div class="row"><span class="dot {{ 'on' if a.fresh else 'off' }}"></span><b>{{ a.agent_id }}</b>
+      <span class="chip">{{ a.state }}</span><span class="muted">{{ a.model or '' }} · {{ a.ago }}</span></div>
+    {% else %}<p class="muted">No agents yet.</p>{% endfor %}
+  </section>
+  <section class="card">
+    <h2>Deployments</h2>
+    {% for d in deployments %}
+    <div class="row"><span class="dot {{ 'on' if d.state == 'running' else 'off' }}"></span><b>{{ d.deployment }}</b>
+      <span class="chip">{{ d.state }}</span><span class="muted mono">{{ (d.digest or '')[7:19] }}</span></div>
+    {% else %}<p class="muted">Nothing deployed.</p>{% endfor %}
+  </section>
+  <section class="card wide">
+    <h2>Last commands</h2>
+    {% for c in commands %}
+    <div class="row"><span class="chip {{ 'good' if c.status == 'succeeded' else 'bad' if c.status in ('failed', 'refused') else '' }}">{{ c.status }}</span>
+      <b>{{ c.action }}</b> <span class="mono">{{ c.target }}</span>
+      <span class="muted">by {{ c.who }} · {{ c.ago }} · “{{ c.reason }}”</span></div>
+    {% else %}<p class="muted">No commands yet.</p>{% endfor %}
+  </section>
+</div>

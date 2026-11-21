@@ -23,7 +23,7 @@ git -C "$SRC" log --oneline -1
 
 echo "==> venv"
 [ -x "$VENV/bin/python" ] || uv venv -q "$VENV"
-uv pip install -q --python "$VENV/bin/python" -e "$SRC/mission-control[pubsub,firestore]"
+uv pip install -q --python "$VENV/bin/python" -e "$SRC/mission-control[pubsub,firestore,console]"
 
 PIN=$(basename "$(ls -dt "$HOME"/.cache/factory/archon/*/ 2>/dev/null | head -1)" 2>/dev/null || true)
 echo "==> config $CONF (engine $ENGINE, product $PRODUCT, archon ${PIN:0:8})"
@@ -95,4 +95,29 @@ UNIT
   systemctl restart mission-control-handler
   sleep 3
   systemctl is-active mission-control-handler
+
+  echo "==> systemd service factory-console (unix socket, no TCP port)"
+  groupadd -f factory-operators      # who may use the console; bin/gcp/console.sh adds OS Login admins
+  cat > /etc/systemd/system/factory-console.service <<UNIT
+[Unit]
+Description=Factory console: operator UI on /run/factory-console/sock (reach it with bin/gcp/console.sh)
+After=network-online.target
+Wants=network-online.target
+[Service]
+RuntimeDirectory=factory-console
+RuntimeDirectoryMode=0755
+Environment=MC_SCHEMA_DIR=$SRC/mission-control/schema
+Environment=GRPC_VERBOSITY=ERROR
+ExecStart=$VENV/bin/python -m mission_control.console --uds /run/factory-console/sock --project $PROJECT --engine $ENGINE
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target
+UNIT
+  systemctl daemon-reload
+  systemctl enable --now factory-console >/dev/null 2>&1
+  systemctl restart factory-console
+  sleep 3
+  systemctl is-active factory-console
+  curl -s --unix-socket /run/factory-console/sock http://console/api/health; echo
 fi

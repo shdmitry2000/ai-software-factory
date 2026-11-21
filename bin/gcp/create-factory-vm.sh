@@ -16,10 +16,11 @@ gcloud compute firewall-rules describe allow-iap-ssh-factory $G >/dev/null 2>&1 
   gcloud compute firewall-rules create allow-iap-ssh-factory $G --network default \
     --direction INGRESS --allow tcp:22 --source-ranges 35.235.240.0/20 --target-tags factory
 
-# Archon's console, reachable only through an IAP tunnel (mission control plan C2).
-gcloud compute firewall-rules describe allow-iap-archon-factory $G >/dev/null 2>&1 ||
-  gcloud compute firewall-rules create allow-iap-archon-factory $G --network default \
-    --direction INGRESS --allow tcp:3090 --source-ranges 35.235.240.0/20 --target-tags factory
+# No rule for Archon's console (tcp:3090) or the factory console: both are reached only
+# through the SSH connection that bin/gcp/console.sh opens (console UI-0.5). Remove the
+# old rule if an earlier version of this script made it.
+gcloud compute firewall-rules describe allow-iap-archon-factory $G >/dev/null 2>&1 &&
+  gcloud compute firewall-rules delete allow-iap-archon-factory $G --quiet
 
 # Service account factory-vm (made by mission-control/infra/setup.sh): may publish to
 # factory-events and keep its bridge cursor in Firestore, nothing else. The project has

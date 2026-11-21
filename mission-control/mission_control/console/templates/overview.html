@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block main %}
+<h1>Overview</h1>
+<div id="tiles" sse-swap="tiles">{% include "_tiles.html" %}</div>
+<section class="card">
+  <h2>Recent events</h2>
+  <div id="recent" sse-swap="recent">{% include "_recent.html" %}</div>
+</section>
+{% endblock %}
