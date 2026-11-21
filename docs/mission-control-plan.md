@@ -181,7 +181,7 @@ UI-6): [console-ui-plan.md](console-ui-plan.md).
 
 | # | Step | Done when | |
 |---|---|---|---|
-| M1 | Halt / unhalt via `factory-commands` | the button halts the engine; audit event recorded | ☐ |
+| M1 | Halt / unhalt via `factory-commands` | the button halts the engine; audit event recorded | ✅ (UI-2, live 2026-11-21) |
 | M2 | Approve a waiting merge | approval reaches Archon; PR merges | ☐ |
 | M3 | Rerun a failed run | a new attempt starts, chained in History | ☐ |
 
@@ -189,7 +189,7 @@ UI-6): [console-ui-plan.md](console-ui-plan.md).
 
 | # | Step | Done when | |
 |---|---|---|---|
-| N1 | `products/<product>.yaml`: repo, `base_branch: main` (owner, 2026-11-17), pools, compliance mode; loader + schema. Console edits arrive as `dev.factory.product.updated` and override the file in the `products` projection (UI part in Q6) | a test loads the converter's file; a missing `base_branch` is an error | ☐ |
+| N1 | `products/<product>.yaml`: repo, `base_branch: main` (owner, 2026-11-17), pools, compliance mode; loader + schema. Console edits arrive as `dev.factory.product.updated` and override the file in the `products` projection (UI part in Q6) | a test loads the converter's file; a missing `base_branch` is an error | ◐ file, loader, `products/{name}` projection and console editor done (UI-2); the engine reading `effective.base_branch` at lap start still to do |
 | N2 | Holdouts outside the repo: run `archon-holdouts` with `holdout=<path outside the checkout>` on a test product | the writer reports scenario ids, `git log --all` on the remote shows no new commit | ☐ |
 | N3 | Holdouts backed up to a private bucket (BlobStore port, GCS adapter, contract tests) and restored by `rebuild.sh` | delete the engine copy, rebuild: the file is back, byte-identical | ☐ |
 | N4 | Git-rules check (read-only): base branch requires a PR, direct pushes blocked, who can bypass | report printed per product; a repo without protection opens a problem | ☐ |

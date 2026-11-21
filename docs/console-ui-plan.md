@@ -5,7 +5,7 @@ settings that steer them, and the buttons that act on them. It replaces the earl
 "dashboard on Cloud Run behind Google sign-in" plan, because the owner's rule
 (2026-11-17) is that **everything is used only through the main node**.
 
-Status: 2026-11-21. UI-0 and UI-1 done and live on factory-1 (`bin/gcp/console.sh`). Architecture: [architecture.md](architecture.md) §9.
+Status: 2026-11-21. UI-0, UI-1 and UI-2 done and live on factory-1 (`bin/gcp/console.sh`). Architecture: [architecture.md](architecture.md) §9.
 Data and events: [mission-control-design.md](mission-control-design.md). Build steps
 are below and mirrored in [mission-control-plan.md](mission-control-plan.md) (Stage F).
 
@@ -254,11 +254,11 @@ and tests call.
 
 | # | Step | Done when |
 |---|---|---|
-| UI-2.1 | Command events and the factory-1 command handler (`product.update`, `engine.halt`) with schemas | unit tests: optimistic lock, refused on stale old value |
-| UI-2.2 | Product settings editor (base branch, compliance mode, rules label, cap) | changing base branch emits `product.updated`; next lap uses it; open PRs unchanged |
-| UI-2.3 | Halt / unhalt button | engine halts; audit shows operator and reason |
-| UI-2.4 | Audit view | every command with who, when, reason, result |
-| UI-2.5 | Problems: acknowledge / resolve | state change recorded as an event |
+| UI-2.1 ✅ | Command events and the factory-1 command handler (`product.update`, `engine.halt`) with schemas | unit tests: optimistic lock, refused on stale old value |
+| UI-2.2 ✅ | Product settings editor (base branch, compliance mode, rules label, cap); one `product.update` per changed field, carrying the value the operator saw | a change emits `product.updated`; the compliance agent applies it on its next tick. The engine reading `base_branch` from `products/{name}.effective` is N1's engine side (not yet) |
+| UI-2.3 ✅ | Halt / unhalt button (runs `consumer.py halt/unhalt`; the bridge now reports the real STOP/PAUSE state) | engine halts; audit shows operator and reason |
+| UI-2.4 ✅ | Audit view | every command with who, when, reason, result |
+| UI-2.5 ✅ | Problems: acknowledge / resolve, tied to the occurrence (`since`) | state change recorded as an event (`problem.acknowledged/resolved`) |
 
 ### UI-3 Hosts, deploy and chains (Stage R, [deploy-and-hosts-plan.md](deploy-and-hosts-plan.md))
 

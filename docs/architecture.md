@@ -104,8 +104,8 @@ Vertex AI is a possible later option per agent.
 | **Event bus** | Pub/Sub `factory-events` (+ `factory-events-dlq`, `factory-commands`) | one ordered stream of everything that happens | running |
 | **Writer** (`mission-control-writer`) | Cloud Run, push subscription `factory-events-writer` | validates each event, stores it, updates projections | running |
 | **State store** | Firestore `(default)` | `events`, `runs`, `nodes`, `engines`; next `agents`, `compliance`, `products`, `problems`, `work_items` … | running |
-| **Console** (`mission_control/console`, systemd `factory-console`) | factory-1, unix socket `/run/factory-console/sock`, no TCP | operator UI: overview, agents, projects, compliance, runs (with retries and steps), problems, live updates; settings and commands next | running (UI-0, UI-1; [console-ui-plan.md](console-ui-plan.md)) |
-| **Command handler** (`mission_control/handler.py`, systemd `mission-control-handler`) | factory-1 | executes commands from `factory-commands` one at a time: deployment apply/start/stop/restart/scale/remove now; halt and settings later. Publishes acknowledged, each step and the outcome | running (R4) |
+| **Console** (`mission_control/console`, systemd `factory-console`) | factory-1, unix socket `/run/factory-console/sock`, no TCP | operator UI: overview, agents, projects (settings editor), compliance, runs (retries, steps), problems (ack/resolve), audit; halt/unhalt and deployment buttons send commands as the operator | running (UI-0–UI-2; [console-ui-plan.md](console-ui-plan.md)) |
+| **Command handler** (`mission_control/handler.py`, systemd `mission-control-handler`) | factory-1 | executes commands from `factory-commands` one at a time: deployments, product settings, halt/unhalt, problem ack/resolve. Publishes acknowledged, each step and the outcome | running (R4, UI-2) |
 | **Agent hosts** | factory-1 (`local`) and sandbox VMs (`vm`) running Docker | run agents and, later, other system parts | factory-1 running; VM hosts planned (Stage R) |
 | **AgentRuntime** (in the command handler) | factory-1 | install hosts; deploy, start, stop, upgrade, roll back, scale, logs; restore after the sweep | port + `fake` + `docker-local` built (`python3 -m mission_control.runtime`); handler planned ([deploy-and-hosts-plan.md](deploy-and-hosts-plan.md)) |
 | **Compliance agent** | container (`agents/compliance`, image `mission-control/agent`) | advisory review of every open PR head against versioned rules | built; first deploy on factory-1 (R2) |
@@ -288,8 +288,9 @@ and is linked per run. Full plan: [console-ui-plan.md](console-ui-plan.md).
 | `hosts/{host}` | host: kind, state, health, what runs there | writer | planned (R) |
 | `deployments/{id}` | latest state: host, digest, instances, last action and command | writer | running (R4) |
 | `compliance/{product}__{pr}` | latest advisory report of a PR | writer | built |
-| `products/{product}` | settings (seeded from `products/*.yaml`, changed by console) + rollups | writer | planned (Q) |
-| `problems/{id}` | open/resolved problems | rules | planned (F) |
+| `products/{product}` | settings: the file's seed + console overrides (newest per field), effective values, change history | writer | running (UI-2) |
+| `problems/{id}` | open/resolved problems written by scheduled rules (for alerts) | rules | planned (F7); the console derives problems on read today |
+| `problem_states/{id}` | operator acknowledgement / resolution per problem occurrence | writer | running (UI-2) |
 | `work_items/{id}` | issue → laps → PR → merge path | writer | planned (G) |
 | `runs/{run}/messages/{seq}` | agent-to-agent messages (holdouts: metadata) | writer | planned (S) |
 | `workflows/{name}@{digest}` | workflow definitions | writer | planned (S) |
