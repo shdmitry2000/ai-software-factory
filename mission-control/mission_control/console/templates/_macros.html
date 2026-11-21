@@ -1,0 +1,16 @@
+{% macro status(s) -%}
+<span class="chip {{ 'good' if s in ('succeeded','completed','running','idle','clean','no_rules') else 'bad' if s in ('failed','refused','error','lost','abandoned','findings','stopped','exited') else 'warn' if s in ('capped','paused','busy','partial','draining') else '' }}">{{ s or '–' }}</span>
+{%- endmacro %}
+{% macro filters(path, q, options) -%}
+<form class="filters" method="get" action="/{{ path }}">
+  {% for name, values in options.items() %}
+  <label>{{ name }}
+    <select name="{{ name }}" onchange="this.form.submit()">
+      <option value="">all</option>
+      {% for v in values %}<option value="{{ v }}" {% if q.get(name) == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+    </select>
+  </label>
+  {% endfor %}
+  {% if q.values()|select|list %}<a href="/{{ path }}">clear</a>{% endif %}
+</form>
+{%- endmacro %}

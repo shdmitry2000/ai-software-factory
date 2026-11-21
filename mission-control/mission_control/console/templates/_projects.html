@@ -1,0 +1,36 @@
+{% from "_macros.html" import status %}
+{% for p in products %}
+<section class="card">
+  <div class="cardhead">
+    <h2>{{ p.name }}</h2>
+    <span class="muted mono">{{ p.repo }}</span>
+  </div>
+  <div class="facts">
+    <div><span class="muted">Base branch</span><b class="mono">{{ p.base_branch }}</b></div>
+    <div><span class="muted">Compliance</span><b>{{ p.compliance.mode }}</b> <span class="muted">rules {{ p.compliance.rules }} @ {{ p.compliance.label }} · cap ${{ p.compliance.daily_cap_usd }}/day</span></div>
+    <div><span class="muted">Open PRs reviewed</span><b>{{ p.open_prs }}</b> <span class="muted">{{ p.findings }} findings</span></div>
+    <div><span class="muted">Last run</span>{% if p.last_run %}{{ status(p.last_run.status) }} <span class="muted">{{ p.last_run.workflow }} · {{ p.last_run.ago }}</span>{% else %}<span class="muted">none yet</span>{% endif %}</div>
+  </div>
+  <h3>Pull requests</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>PR</th><th>Title</th><th>Head</th><th>Compliance</th><th>Findings</th><th>Rules</th><th>Reviewed</th></tr></thead>
+    <tbody>
+    {% for r in p.reports %}
+    <tr><td><a href="https://github.com/{{ p.repo }}/pull/{{ r.pr }}" target="_blank" rel="noopener">#{{ r.pr }}</a></td>
+      <td>{{ r.title or '' }}</td><td class="mono">{{ r.short_head }}</td><td>{{ status(r.status) }}</td>
+      <td>{{ r.n_findings }}{% if r.top_severity %} <span class="muted">top {{ r.top_severity }}</span>{% endif %}</td>
+      <td class="mono">v{{ r.rules_version }} · {{ r.rules_count }} rules</td><td class="nowrap">{{ r.ago }}</td></tr>
+    {% else %}<tr><td colspan="7" class="muted">No reviewed PRs yet.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {% if p.runs %}
+  <h3>Recent runs</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Run</th><th>Workflow</th><th>Status</th><th>Started</th><th>Took</th></tr></thead>
+    <tbody>{% for r in p.runs %}<tr><td class="mono"><a href="/runs/{{ r.run }}">{{ r.run[:12] }}</a></td><td>{{ r.workflow }}</td><td>{{ status(r.status) }}</td><td class="nowrap">{{ r.ago }}</td><td>{{ r.took }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+</section>
+{% else %}
+<section class="card"><p class="muted">No products in <span class="mono">products/</span>.</p></section>
+{% endfor %}

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status %}
+{% block title %}Run {{ run.run[:12] }} · Factory console{% endblock %}
+{% block main %}
+<h1>Run <span class="mono">{{ run.run }}</span></h1>
+<section class="card"><div class="facts">
+  <div><span class="muted">Workflow</span><b>{{ run.workflow or '' }}</b></div>
+  <div><span class="muted">Status</span>{{ status(run.status) }}</div>
+  <div><span class="muted">Product</span><b>{{ run.product or '' }}</b></div>
+  <div><span class="muted">Started</span>{{ run.ago }} <span class="muted">took {{ run.took }}</span></div>
+  {% if run.parent_run %}<div><span class="muted">Retry of</span><a class="mono" href="/runs/{{ run.parent_run }}">{{ run.parent_run[:12] }}</a></div>{% endif %}
+  {% if run.failure_class %}<div><span class="muted">Failure</span><span class="mono">{{ run.failure_class }}</span> at {{ run.failed_node }}</div>{% endif %}
+</div>
+{% if run.summary %}<p>{{ run.summary }}</p>{% endif %}
+<p><a href="{{ archon_url }}" target="_blank" rel="noopener">Open in Archon ↗</a> <span class="muted">(live graph comes in UI-4)</span></p>
+</section>
+<section class="card"><h2>Steps</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Node</th><th>Status</th><th>Agent</th><th>Attempts</th><th>Took</th><th>Notes</th></tr></thead>
+    <tbody>{% for n in run.nodes %}<tr><td class="mono">{{ n.node }}</td><td>{{ status(n.status) }}</td><td>{{ n.agent or '' }}</td><td>{{ n.attempts or '' }}</td><td>{{ n.took }}</td><td class="muted">{{ n.failure_class or n.reason or '' }}</td></tr>
+    {% else %}<tr><td colspan="6" class="muted">No steps recorded.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% endblock %}

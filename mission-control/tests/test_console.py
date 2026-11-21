@@ -12,7 +12,7 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from mission_control import registry  # noqa: E402
-from mission_control.console.app import SCREENS, create_app  # noqa: E402
+from mission_control.console.app import BUILT, SCREENS, create_app  # noqa: E402
 from mission_control.console.peercred import Operator, operator_for, peer_of  # noqa: E402
 
 ADMIN = Operator("alice", 1001, True, "peercred", ("factory-operators",))
@@ -62,16 +62,18 @@ def test_operator_sees_the_shell_and_overview(store):
     for _, label, _ in SCREENS:
         assert f">{label}</a>" in r.text
     assert "alice" in r.text and "compliance-1-local" in r.text and "compliance@local" in r.text
-    assert "engine old-1 silent" in r.text                       # needs-you list
+    assert "Engine old-1 is silent" in r.text                    # needs-you list
     assert "PAYLOAD-MUST-NOT-RENDER" not in r.text               # payloads never reach the page
     assert 'sse-connect="/stream"' in r.text
 
 
-def test_every_later_screen_has_a_placeholder(store):
+def test_every_screen_answers_and_later_ones_name_their_step(store):
     c = client(store, ADMIN)
     for path, label, stage in SCREENS[1:]:
         r = c.get(f"/{path}")
-        assert r.status_code == 200 and stage in r.text, path
+        assert r.status_code == 200, path
+        if stage not in BUILT:
+            assert stage in r.text, path
 
 
 def test_whoami_and_overview_api(store):
@@ -79,6 +81,7 @@ def test_whoami_and_overview_api(store):
     assert c.get("/api/whoami").json()["name"] == "alice"
     ov = c.get("/api/overview").json()
     assert {e["engine"]: e["alive"] for e in ov["engines"]} == {"factory-1": True, "old-1": False}
+    assert any(p["kind"] == "engine.silent" for p in ov["needs"])
 
 
 def test_dev_operator_only_when_no_peer_credentials(store):
@@ -86,16 +89,19 @@ def test_dev_operator_only_when_no_peer_credentials(store):
     assert c.get("/api/whoami").json() == {"name": "dev-me", "uid": None, "how": "dev", "groups": []}
 
 
-def test_stream_pushes_recent_and_tiles_fragments(store):
+def test_stream_signals_changed_when_a_new_event_lands(store):
     with client(store, ADMIN).stream("GET", "/stream") as r:
         assert r.headers["content-type"].startswith("text/event-stream")
-        seen = []
-        for line in r.iter_lines():
-            if line.startswith("event: "):
-                seen.append(line.removeprefix("event: "))
-            if "tiles" in seen:
+        lines = r.iter_lines()
+        for line in lines:
+            if line.startswith(": connected"):
                 break
-    assert seen[:2] == ["recent", "tiles"]
+        store.upsert("events", "e2", {"type": "dev.factory.engine.heartbeat", "subject": "engine/factory-1",
+                                      "received_at": ts(0)})
+        for line in lines:
+            if line.startswith("event: "):
+                assert line == "event: changed"
+                break
 
 
 def test_operator_for_this_process_and_root():

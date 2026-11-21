@@ -20,7 +20,7 @@
 <div class="shell">
   <nav class="side" aria-label="Screens">
     {% for path, label, stage in screens %}
-    <a href="/{{ path }}" class="{% if path == active %}on{% endif %}{% if stage != 'UI-0' and path != active %} later{% endif %}">{{ label }}</a>
+    <a href="/{{ path }}" class="{% if path == active %}on{% endif %}{% if stage not in built and path != active %} later{% endif %}">{{ label }}</a>
     {% endfor %}
     <a href="{{ archon_url }}" target="_blank" rel="noopener" class="ext">Archon runs ↗</a>
   </nav>

@@ -1,0 +1,10 @@
+<p class="muted">Derived live from engines, agents, deployments, runs and compliance reports (rules in <span class="mono">mission_control/console/views.py</span>).</p>
+<section class="card">
+  {% for p in problems %}
+  <div class="problem {{ p.severity }}">
+    <span class="chip sev-{{ p.severity }}">{{ p.severity }}</span>
+    <div><a href="{{ p.link or '#' }}"><b>{{ p.title }}</b></a><div class="muted">{{ p.detail }}{% if p.since %} · since {{ p.since[:19]|replace('T', ' ') }} UTC{% endif %}</div></div>
+    <span class="mono muted">{{ p.kind }}</span>
+  </div>
+  {% else %}<p class="ok">No problems.</p>{% endfor %}
+</section>

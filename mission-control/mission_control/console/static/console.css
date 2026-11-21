@@ -39,3 +39,24 @@ table.events { width:100%; border-collapse:collapse; font-size:13px; }
 .denied { max-width: 640px; margin: 15vh auto; padding: 0 16px; }
 @media (max-width: 760px) { .shell { grid-template-columns: 1fr; } .side { flex-direction:row; overflow-x:auto; border-right:0; border-bottom:1px solid var(--line); }
   .side a { white-space:nowrap; } .side a.ext { margin:0; border:0; padding-top:6px; } }
+h3 { font-size:13px; margin:16px 0 6px; }
+.scroll { overflow-x:auto; }
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th { text-align:left; font-weight:600; color:var(--muted); font-size:11.5px; text-transform:uppercase; letter-spacing:.05em; padding:6px 8px; border-bottom:1px solid var(--line); white-space:nowrap; }
+td { padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; overflow-wrap:anywhere; }
+tr.retry td { background: var(--bg); }
+.nowrap { white-space:nowrap; }
+.card + .card { margin-top:14px; }
+.cardhead { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; } .cardhead h2 { margin:0; color:var(--fg); font-size:15px; text-transform:none; letter-spacing:0; }
+.facts { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:10px 16px; margin:12px 0; }
+.facts > div { display:flex; flex-direction:column; gap:2px; min-width:0; } .facts .muted { font-size:12px; }
+.filters { display:flex; gap:14px; align-items:end; flex-wrap:wrap; margin-bottom:12px; }
+.filters label { display:flex; flex-direction:column; font-size:12px; color:var(--muted); gap:3px; }
+.filters select { font:inherit; padding:4px 6px; border:1px solid var(--line); border-radius:6px; background:var(--panel); color:var(--fg); }
+.needs li.warning { color: var(--warn); } .needs li a { color:inherit; }
+.chip.sev-critical, .chip.sev-high { color:var(--bad); border-color:currentColor; }
+.chip.sev-warning, .chip.sev-medium { color:var(--warn); border-color:currentColor; }
+.problem { display:grid; grid-template-columns: auto 1fr auto; gap:12px; align-items:start; padding:10px 0; border-bottom:1px solid var(--line); }
+.problem:last-child { border-bottom:0; } .problem a { color:var(--fg); text-decoration:none; }
+.findings { margin:6px 0 0; padding-left:16px; } .findings li { margin:4px 0; }
+details summary { cursor:pointer; }
