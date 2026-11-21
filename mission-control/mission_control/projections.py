@@ -8,6 +8,9 @@
     commands/{id}           one per operator command: who, why, steps, outcome
     deployments/{id}        one per component@host: instances, desired state, last digests
     hosts/{id}              one per host: health from heartbeats, desired state from host commands
+    pullrequests/{product}__{pr}  one per PR seen by the git poller: state, head, checks per head
+    workitems/{product}__{n}      one per issue seen by the git poller
+    repos/{product}         the product's repository: branch heads, last poll (git_seen_at), errors
 
 Every rule is order-independent and idempotent, because the bus delivers late and twice:
 - a terminal status always beats a non-terminal one; among non-terminal statuses the event
@@ -28,6 +31,8 @@ AGENTS, COMPLIANCE = "agents", "compliance"
 COMMANDS, DEPLOYMENTS = "commands", "deployments"
 PRODUCTS, PROBLEM_STATES = "products", "problem_states"
 HOSTS = "hosts"
+PULLREQUESTS, WORKITEMS, REPOS = "pullrequests", "workitems", "repos"
+CHECK_HEADS = 5
 DIGEST_HISTORY = 5
 REPORT_FIELDS = ("product", "pr", "change", "head", "base", "title", "mode", "status", "rules",
                  "findings", "model", "effort", "cost_usd", "diff_truncated", "error")
@@ -267,6 +272,98 @@ def _apply_product(doc: dict | None, ev: Event, kind: str) -> dict:
     return d
 
 
+# ---------------------------------------------------------------------- git (poller)
+PR_STATE = {"pullrequest.opened": "open", "pullrequest.updated": "open",
+            "pullrequest.merged": "merged", "pullrequest.closed": "closed"}
+WI_STATE = {"workitem.opened": "open", "workitem.updated": "open", "workitem.closed": "closed"}
+
+
+def _lifecycle(d: dict, state: str, t: str, absorbing: set[str]) -> None:
+    """open/closed/merged: the later event wins (a reopen after a close is open again);
+    an absorbing state (merged) is final whatever arrives after it."""
+    cur, cur_t = d.get("state"), d.get("state_time") or ""
+    if cur in absorbing:
+        return
+    if state in absorbing or cur is None or t >= cur_t:
+        d["state"], d["state_time"] = state, t
+
+
+def _apply_pull(doc: dict | None, ev: Event, kind: str) -> dict:
+    data, t = ev.get("data", {}), ev["time"]
+    d = _base(doc, product=data.get("product"), pr=data.get("pr"), change=data.get("change"), repo=data.get("repo"))
+    if kind == "check.completed":
+        heads = dict(d.get("checks") or {})
+        runs = dict(heads.get(data["head"]) or {})
+        cur = runs.get(data["name"])
+        if cur is None or (t, data["check_id"]) >= (cur.get("time", ""), cur.get("check_id", "")):
+            runs[data["name"]] = {"conclusion": data["conclusion"], "check_id": data["check_id"],
+                                  "url": data.get("url", ""), "time": t}
+        heads[data["head"]] = runs
+        keep = sorted(heads, key=lambda h: max(r["time"] for r in heads[h].values()))[-CHECK_HEADS:]
+        if d.get("head") in heads and d["head"] not in keep:
+            keep = keep[1:] + [d["head"]]
+        d["checks"] = {h: heads[h] for h in keep}
+        d["last_event_at"] = _max(d.get("last_event_at"), t)
+        return d
+    _lifecycle(d, PR_STATE[kind], t, {"merged"})
+    if kind in ("pullrequest.opened", "pullrequest.updated") and t >= (d.get("head_time") or ""):
+        d.update(head=data["head"], head_time=t)
+    elif not d.get("head"):
+        d["head"] = data["head"]
+    if t >= (d.get("info_time") or ""):
+        d["info_time"] = t
+        for k in ("title", "base", "author", "url", "draft"):
+            if k in data:
+                d[k] = data[k]
+    d["opened_at"] = _min(d.get("opened_at"), data.get("created_at") or (t if kind == "pullrequest.opened" else None))
+    if kind == "pullrequest.merged":
+        d["merged_at"] = data.get("merged_at") or t
+    if kind in ("pullrequest.merged", "pullrequest.closed"):
+        d["closed_at"] = _max(d.get("closed_at"), data.get("closed_at") or t)
+    d["last_event_at"] = _max(d.get("last_event_at"), t)
+    return d
+
+
+def _apply_workitem(doc: dict | None, ev: Event, kind: str) -> dict:
+    data, t = ev.get("data", {}), ev["time"]
+    d = _base(doc, product=data.get("product"), number=data.get("number"), work_item=data.get("work_item"),
+              repo=data.get("repo"))
+    _lifecycle(d, WI_STATE[kind], t, set())
+    if t >= (d.get("info_time") or ""):
+        d["info_time"] = t
+        for k in ("title", "labels", "author", "url"):
+            if k in data:
+                d[k] = data[k]
+    d["opened_at"] = _min(d.get("opened_at"), data.get("created_at"))
+    if kind == "workitem.closed":
+        d["closed_at"] = _max(d.get("closed_at"), data.get("closed_at") or t)
+    d["last_event_at"] = _max(d.get("last_event_at"), t)
+    return d
+
+
+def _apply_repo(doc: dict | None, ev: Event, kind: str) -> dict:
+    """repos/{product}: branch heads (per branch, the later event wins) and the last poll."""
+    data, t = ev.get("data", {}), ev["time"]
+    d = _base(doc, product=data.get("product"), repo=data.get("repo"))
+    if kind == "codehost.polled":
+        if t >= (d.get("polled_at") or ""):
+            d["polled_at"] = t
+            d["poll"] = {k: v for k, v in data.items() if k not in ("product", "repo")}
+        if data.get("ok"):
+            d["git_seen_at"] = _max(d.get("git_seen_at"), t)
+        else:
+            d["error_at"] = _max(d.get("error_at"), t)
+        return d
+    branches = dict(d.get("branches") or {})
+    cur = branches.get(data["branch"]) or {}
+    if t >= cur.get("time", ""):
+        branches[data["branch"]] = {"head": data.get("head", ""), "time": t, "deleted": kind == "branch.deleted"}
+    d["branches"] = branches
+    if kind == "branch.pushed" and not data.get("initial"):
+        d["last_push_at"] = _max(d.get("last_push_at"), t)
+    return d
+
+
 def _apply_problem_state(doc: dict | None, ev: Event, kind: str) -> dict:
     """problem_states/{id}: the latest acknowledgement and resolution, each tied to the
     occurrence (`since`) it was made for."""
@@ -323,6 +420,26 @@ def project(ev: Event, store: StateStore) -> list[str]:
         key = compliance_key(data["product"], data["pr"])
         store.update(COMPLIANCE, key, lambda doc: _apply_report(doc, ev))
         return [f"{COMPLIANCE}/{key}"]
+    if kind in PR_STATE or kind == "check.completed":
+        data = ev.get("data") or {}
+        if not (data.get("product") and data.get("pr")):
+            return []
+        key = compliance_key(data["product"], data["pr"])
+        store.update(PULLREQUESTS, key, lambda doc: _apply_pull(doc, ev, kind))
+        return [f"{PULLREQUESTS}/{key}"]
+    if kind in WI_STATE:
+        data = ev.get("data") or {}
+        if not (data.get("product") and data.get("number")):
+            return []
+        key = compliance_key(data["product"], data["number"])
+        store.update(WORKITEMS, key, lambda doc: _apply_workitem(doc, ev, kind))
+        return [f"{WORKITEMS}/{key}"]
+    if kind in ("branch.pushed", "branch.deleted", "codehost.polled"):
+        name = (ev.get("data") or {}).get("product")
+        if not name:
+            return []
+        store.update(REPOS, name, lambda doc: _apply_repo(doc, ev, kind))
+        return [f"{REPOS}/{name}"]
     if kind in ("product.registered", "product.updated"):
         name = (ev.get("data") or {}).get("product")
         if not name:

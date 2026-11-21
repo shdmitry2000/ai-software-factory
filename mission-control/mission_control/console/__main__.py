@@ -46,6 +46,35 @@ def _seed(store) -> None:
                                      ("engine.heartbeat", "engine/factory-1")]):
         store.upsert("events", f"demo:{i}", {"type": f"dev.factory.{typ}", "subject": subj,
                      "factoryengine": "factory-1", "received_at": t(60 * (i + 1)), "time": t(60 * (i + 1))})
+    _seed_git(store, t)
+
+
+def _seed_git(store, t) -> None:
+    """Git data the way production makes it: the poller over a fake repository, its events
+    projected straight into the store."""
+    from mission_control.adapters.git.fake import FakeGitActivity
+    from mission_control.deployspec import ROOT
+    from mission_control.poller import Poller
+    from mission_control.ports import GitCheck, GitIssue, GitPull
+    from mission_control.projections import project
+
+    class Projector:
+        def publish(self, topic, event, *, ordering_key=""):
+            project(event, store)
+            return event["id"]
+
+    repo, z = "shdmitry2000/file-to-markdown-convertor", lambda s: t(s)[:19] + "Z"
+    git = FakeGitActivity()
+    git.set_branch(repo, "main", "a1" * 20)
+    git.set_branch(repo, "factory/issue-14", "b2" * 20)
+    git.put_pull(repo, GitPull(3, "Add PDF table extraction", "open", "b2" * 20, "main", "factory-bot",
+                               created_at=z(7200), updated_at=z(600)))
+    git.put_pull(repo, GitPull(5, "Docs: usage examples", "open", "c3" * 20, "develop", "factory-bot",
+                               created_at=z(3600), updated_at=z(1200)))
+    git.set_checks(repo, "b2" * 20, [GitCheck("1", "test", "completed", "success", completed_at=z(500)),
+                                     GitCheck("2", "lint", "completed", "failure", completed_at=z(480))])
+    git.put_issue(repo, GitIssue(14, "Tables in PDFs lose their columns", "open", ("bug", "factory"), created_at=z(86400)))
+    Poller(git, Projector(), store, products_dir=ROOT / "products", engine="factory-1").step()
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -72,16 +72,19 @@ new version (`…v2`), never an edit.
 
 | Type | Subject | Meaning | Source today (GitHub) |
 |---|---|---|---|
-| `dev.factory.workitem.opened` | `workitem/{id}` | a work item exists | issue opened |
-| `dev.factory.workitem.updated` | `workitem/{id}` | title, labels, priority, dependencies changed | issue edited / labeled |
+| `dev.factory.workitem.opened` | `workitem/{id}` | a work item exists (or was reopened) | git poller: issue opened |
+| `dev.factory.workitem.updated` | `workitem/{id}` | title, labels, priority, dependencies changed | git poller: issue edited / labeled |
 | `dev.factory.workitem.claimed` | `workitem/{id}` | a lap claimed it | claim comment |
 | `dev.factory.workitem.released` | `workitem/{id}` | the claim ended | claim removed / expired |
-| `dev.factory.workitem.closed` | `workitem/{id}` | done or dropped | issue closed |
-| `dev.factory.pullrequest.opened` | `change/{id}` | a change was proposed | PR opened |
-| `dev.factory.pullrequest.updated` | `change/{id}` | new head commit | PR synchronize |
-| `dev.factory.pullrequest.merged` | `change/{id}` | merged | PR merged |
-| `dev.factory.pullrequest.closed` | `change/{id}` | closed unmerged | PR closed |
-| `dev.factory.check.completed` | `change/{id}/check/{name}` | a CI check concluded | check run completed |
+| `dev.factory.workitem.closed` | `workitem/{id}` | done or dropped | git poller: issue closed |
+| `dev.factory.pullrequest.opened` | `change/{id}` | a change was proposed (or reopened) | git poller: PR opened |
+| `dev.factory.pullrequest.updated` | `change/{id}` | new head commit, or the title, base or draft flag changed | git poller: PR synchronize / edited |
+| `dev.factory.pullrequest.merged` | `change/{id}` | merged | git poller |
+| `dev.factory.pullrequest.closed` | `change/{id}` | closed unmerged | git poller |
+| `dev.factory.check.completed` | `change/{id}/check/{name}` | a CI check on an open PR's head concluded | git poller: check run completed |
+| `dev.factory.branch.pushed` | `product/{name}/branch/{branch}` | a branch has a new head (or was created) | git poller |
+| `dev.factory.branch.deleted` | `product/{name}/branch/{branch}` | a branch is gone | git poller |
+| `dev.factory.codehost.polled` | `product/{name}` | the poller read the product's repository: counts, base head, rate limit, or the error | git poller, on change and every 5 min |
 | `dev.factory.review.submitted` | `change/{id}` | a review verdict | PR review |
 
 ## Memory (MemoryStore)

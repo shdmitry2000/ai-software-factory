@@ -25,6 +25,8 @@ BUILTIN: dict[str, dict[str, str]] = {
             "pubsub": "mission_control.adapters.bus.pubsub"},
     "codehost": {"github": "mission_control.adapters.codehost.github"},
     "engine": {"archon": "mission_control.adapters.engine.archon"},
+    "git": {"github": "mission_control.adapters.git.github",
+            "fake": "mission_control.adapters.git.fake"},
     "prompts": {"files": "mission_control.adapters.prompts.files"},
     "runtime": {"fake": "mission_control.adapters.runtime.fake",
                 "docker-local": "mission_control.adapters.runtime.docker_local",

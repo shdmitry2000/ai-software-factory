@@ -19,6 +19,8 @@ FAILED_WINDOW_S = 24 * 3600    # failed runs shown as problems for a day
 RUN_LIMIT = 150
 SEVERITY_ORDER = {"critical": 0, "warning": 1, "info": 2}
 FINDING_ORDER = {"high": 0, "medium": 1, "low": 2, "info": 3}
+GIT_STALE_S = 900              # no successful poll of a repository for this long: stale
+CHECK_FAILED = {"failure", "timed_out", "cancelled", "action_required", "stale"}
 
 
 def now() -> datetime:
@@ -168,14 +170,35 @@ def run_filters(store: StateStore) -> dict:
 
 
 # ---------------------------------------------------------------------- products
-def products(store: StateStore, at: datetime, products_dir: Path, prompts=None) -> list[dict]:
-    """Each product with its current settings: the file's values, overridden by console
-    changes (products/{name}.effective), plus the change history."""
+def checks_summary(pr: dict) -> dict:
+    """The checks on a PR's current head: counts and the failing names."""
+    runs = ((pr.get("checks") or {}).get(pr.get("head", "")) or {})
+    failed = sorted(n for n, r in runs.items() if r.get("conclusion") in CHECK_FAILED)
+    passed = sum(1 for r in runs.values() if r.get("conclusion") == "success")
+    state = "none" if not runs else "failing" if failed else "passing" if passed == len(runs) else "mixed"
+    return {"total": len(runs), "passed": passed, "failed": failed, "state": state,
+            "runs": [{"name": n, **r} for n, r in sorted(runs.items())]}
+
+
+def git_stale(repo: dict, at: datetime) -> bool:
+    interval = int(((repo.get("poll") or {}).get("interval_s")) or 60)
+    a = age_s(repo.get("git_seen_at"), at)
+    return a is None or a >= max(GIT_STALE_S, 3 * interval)
+
+
+def products(store: StateStore, at: datetime, products_dir: Path, prompts=None,
+             problem_list: list | None = None) -> list[dict]:
+    """Each product with its current settings (the file's values, overridden by console
+    changes: products/{name}.effective) and its rollups: open PRs with checks and the
+    compliance review of each head, open issues, branches, last run, problems, and when
+    the git poller last read the repository (`git_seen_at`)."""
     try:
         items = list(products_mod.load_all(products_dir).values())
     except Exception:                                # a broken file must not take the page down
         items = []
     docs = {d.get("product"): d for d in store.query("products")}
+    repos = {d.get("product"): d for d in store.query("repos")}
+    all_pulls, all_items = store.query("pullrequests"), store.query("workitems")
     all_reports = reports(store, at)
     all_runs = runs(store, at, limit=RUN_LIMIT)
     out = []
@@ -194,10 +217,47 @@ def products(store: StateStore, at: datetime, products_dir: Path, prompts=None) 
         if p.compliance.label not in labels:
             labels.append(p.compliance.label)
         rep = [r for r in all_reports if r.get("product") == p.name]
+        by_pr = {int(r.get("pr") or 0): r for r in rep}
         rn = [r for r in all_runs if r.get("product") == p.name]
+        repo = repos.get(p.name) or {}
+        mine = [x for x in all_pulls if x.get("product") == p.name and x.get("state")]
+        polled = bool(repo.get("git_seen_at") or mine)
+        open_pulls, closed_pulls = [], []
+        for x in sorted(mine, key=lambda x: -int(x.get("pr") or 0)):
+            r = by_pr.get(int(x.get("pr") or 0))
+            row = {**x, "short_head": str(x.get("head", ""))[:8], "ago": ago(x.get("opened_at"), at),
+                   "checks": checks_summary(x), "report": r,
+                   "review": "none" if not r else "current" if r.get("head") == x.get("head") else "outdated"}
+            if x.get("state") == "open":
+                open_pulls.append(row)
+            else:
+                closed_pulls.append({**row, "closed_ago": ago(x.get("closed_at"), at)})
+        closed_pulls.sort(key=lambda x: x.get("closed_at") or "", reverse=True)
+        if not polled:                               # no git data yet: the PRs the compliance agent reviewed
+            open_pulls = [{"pr": r.get("pr"), "title": r.get("title"), "head": r.get("head"), "short_head": r["short_head"],
+                           "base": r.get("base"), "checks": checks_summary({}), "report": r, "review": "current",
+                           "ago": ""} for r in rep]
+        open_items = sorted((w for w in all_items if w.get("product") == p.name and w.get("state") == "open"),
+                            key=lambda w: -int(w.get("number") or 0))
+        branches = {b: v for b, v in (repo.get("branches") or {}).items() if not v.get("deleted")}
+        base = branches.get(p.base_branch) or {}
+        open_rep = [row["report"] for row in open_pulls if row.get("report")]
+        poll = repo.get("poll") or {}
+        prob = [x for x in (problem_list or []) if getattr(x, "product", "") == p.name]
         out.append({"name": p.name, "repo": p.repo, "base_branch": p.base_branch, "codehost": p.codehost,
                     "compliance": p.compliance, "reports": rep, "runs": rn[:5],
-                    "open_prs": len(rep), "findings": sum(r["n_findings"] for r in rep),
+                    "pulls": open_pulls, "closed_pulls": closed_pulls[:5],
+                    "open_prs": len(open_pulls), "findings": sum(r.get("n_findings", 0) for r in open_rep),
+                    "failing_checks": sum(1 for row in open_pulls if row["checks"]["state"] == "failing"),
+                    "unreviewed": sum(1 for row in open_pulls if row["review"] != "current"),
+                    "issues": [{**w, "ago": ago(w.get("opened_at"), at)} for w in open_items[:10]],
+                    "open_issues": len(open_items), "branches": len(branches),
+                    "base_head": str(base.get("head", ""))[:8], "base_ago": ago(base.get("time"), at) if base else "",
+                    "last_push_ago": ago(repo.get("last_push_at"), at) if repo.get("last_push_at") else "",
+                    "polled": polled, "git_seen_ago": ago(repo.get("git_seen_at"), at),
+                    "git_stale": polled and git_stale(repo, at), "git_error": "" if poll.get("ok", True) else poll.get("error", ""),
+                    "rate": f"{poll['rate_remaining']}/{poll['rate_limit']}" if poll.get("rate_limit") else "",
+                    "problems": len(prob),
                     "last_run": rn[0] if rn else None, "overrides": overrides, "history": history,
                     "labels": labels, "modes": sorted(products_mod.MODES),
                     "registered": bool(doc.get("seed_hash"))})
@@ -216,6 +276,7 @@ class Problem:
     key: str = ""          # what it is about: engine, agent, deployment, run, product__pr
     acked_by: str = ""
     ack_reason: str = ""
+    product: str = ""      # the product it concerns, when it concerns one (Projects rollup)
 
     @property
     def id(self) -> str:
@@ -274,21 +335,45 @@ def problems(store: StateStore, at: datetime, spec_hosts: set[str] | None = None
         if last.get("status") == "failed" and age is not None and age < FAILED_WINDOW_S:
             out.append(Problem("warning", "run.failed", f"Run {last.get('workflow') or ''} failed",
                                f"{last.get('failure_class') or ''} at {last.get('failed_node') or '?'} · {last.get('product') or ''}",
-                               f"/runs/{last.get('run')}", last.get("ended_at", ""), last.get("run", "")))
+                               f"/runs/{last.get('run')}", last.get("ended_at", ""), last.get("run", ""),
+                               product=last.get("product") or ""))
         if last.get("stuck"):
             out.append(Problem("critical", "run.stuck", f"Run {last.get('workflow') or ''} looks stuck",
                                f"no event for over {STUCK_S // 60} min", f"/runs/{last.get('run')}",
-                               last.get("last_event_at", ""), last.get("run", "")))
+                               last.get("last_event_at", ""), last.get("run", ""), product=last.get("product") or ""))
+    pulls = {f"{x.get('product')}__{x.get('pr')}": x for x in store.query("pullrequests")}
     for rep in reports(store, at):
+        key = f"{rep.get('product')}__{rep.get('pr')}"
+        if (pulls.get(key) or {}).get("state") in ("merged", "closed"):
+            continue                                   # the PR is gone; its last review no longer needs anyone
         if rep.get("status") in ("error", "capped"):
             out.append(Problem("warning", f"compliance.{rep['status']}",
                                f"Compliance {rep['status']} on {rep.get('product')} #{rep.get('pr')}",
                                str(rep.get("error", ""))[:300], "/compliance", rep.get("reported_at", ""),
-                               f"{rep.get('product')}__{rep.get('pr')}"))
+                               key, product=rep.get("product", "")))
         elif rep.get("top_severity") == "high":
             out.append(Problem("info", "compliance.high", f"High-severity finding on {rep.get('product')} #{rep.get('pr')}",
                                rep["findings"][0].get("title", ""), "/compliance", rep.get("reported_at", ""),
-                               f"{rep.get('product')}__{rep.get('pr')}"))
+                               key, product=rep.get("product", "")))
+    for key, x in sorted(pulls.items()):
+        if x.get("state") != "open":
+            continue
+        cs = checks_summary(x)
+        if cs["failed"]:
+            out.append(Problem("info", "pullrequest.checks_failed",
+                               f"Checks failing on {x.get('product')} #{x.get('pr')}",
+                               ", ".join(cs["failed"])[:300], "/projects", str(x.get("head", ""))[:12], key,
+                               product=x.get("product", "")))
+    for repo in store.query("repos"):
+        name, poll = repo.get("product", ""), repo.get("poll") or {}
+        if not poll.get("ok", True):
+            out.append(Problem("critical" if poll.get("error_kind") == "auth" else "warning", "git.error",
+                               f"Reading {repo.get('repo') or name} failed",
+                               str(poll.get("error", ""))[:300], "/projects", repo.get("error_at", "")[:13], name, product=name))
+        elif repo.get("git_seen_at") and git_stale(repo, at):
+            out.append(Problem("warning", "git.stale", f"Git data for {name} is stale",
+                               f"last read {ago(repo.get('git_seen_at'), at)}; is mission-control-poller running?",
+                               "/projects", repo.get("git_seen_at", ""), name, product=name))
     states = {d.get("problem_id"): d for d in store.query("problem_states")}
     shown: list[Problem] = []
     for p in out:

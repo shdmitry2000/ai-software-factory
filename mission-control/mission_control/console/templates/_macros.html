@@ -1,5 +1,5 @@
 {% macro status(s) -%}
-<span class="chip {{ 'good' if s in ('succeeded','completed','running','idle','clean','no_rules') else 'bad' if s in ('failed','refused','error','lost','abandoned','findings','stopped','exited') else 'warn' if s in ('capped','paused','busy','partial','draining') else '' }}">{{ s or '–' }}</span>
+<span class="chip {{ 'good' if s in ('succeeded','completed','running','idle','clean','no_rules','merged') else 'bad' if s in ('failed','refused','error','lost','abandoned','findings','stopped','exited') else 'warn' if s in ('capped','paused','busy','partial','draining') else '' }}">{{ s or '–' }}</span>
 {%- endmacro %}
 {% macro filters(path, q, options) -%}
 <form class="filters" method="get" action="/{{ path }}">

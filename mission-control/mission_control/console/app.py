@@ -133,7 +133,8 @@ def create_app(store: StateStore, *, resolve: Callable[[tuple | None], Operator 
                 "deployments": views.deployments(store, at)}
 
     def data_projects(q: dict) -> dict:
-        return {"products": views.products(store, views.now(), pdir, prompts)}
+        at = views.now()
+        return {"products": views.products(store, at, pdir, prompts, problem_list=views.problems(store, at))}
 
     def data_compliance(q: dict) -> dict:
         at = views.now()

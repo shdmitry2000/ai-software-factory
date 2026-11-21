@@ -129,6 +129,82 @@ class CodeHost(Protocol):
         """Unified diff of the change against its base, and whether it was truncated."""
 
 
+# --------------------------------------------------------------------------- GitActivity
+
+
+@dataclass(frozen=True)
+class GitPull:
+    number: int
+    title: str
+    state: str                            # open | closed | merged
+    head: str                             # head commit sha (40 hex)
+    base: str                             # branch it targets
+    author: str = ""
+    url: str = ""
+    draft: bool = False
+    created_at: str = ""                  # RFC 3339, from the code host
+    updated_at: str = ""
+    closed_at: str = ""
+    merged_at: str = ""
+
+
+@dataclass(frozen=True)
+class GitCheck:
+    id: str                               # the code host's check id (a rerun is a new id)
+    name: str
+    status: str                           # queued | in_progress | completed
+    conclusion: str = ""                  # success | failure | neutral | cancelled | skipped | timed_out | action_required | stale
+    url: str = ""
+    completed_at: str = ""
+
+
+@dataclass(frozen=True)
+class GitIssue:
+    number: int
+    title: str
+    state: str                            # open | closed
+    labels: tuple[str, ...] = ()
+    author: str = ""
+    url: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+    closed_at: str = ""
+
+
+class GitError(RuntimeError):
+    """A code host call failed; `kind` is auth | rate_limited | not_found | http | network."""
+
+    def __init__(self, kind: str, message: str, *, reset_at: str = "") -> None:
+        super().__init__(message)
+        self.kind, self.reset_at = kind, reset_at
+
+
+@runtime_checkable
+class GitActivity(Protocol):
+    """What happens in a repository, read by polling (no public webhook needed).
+
+    Every call returns the current state; adapters make repeated calls cheap (GitHub:
+    ETags, so an unchanged answer costs no rate limit). Failures raise GitError."""
+
+    def pulls(self, repo: str) -> list[GitPull]:
+        """Open pull requests."""
+
+    def pull(self, repo: str, number: int) -> GitPull | None: ...
+
+    def branches(self, repo: str) -> dict[str, str]:
+        """Branch name → head sha."""
+
+    def checks(self, repo: str, sha: str) -> list[GitCheck]: ...
+
+    def issues(self, repo: str) -> list[GitIssue]:
+        """Open issues (pull requests excluded)."""
+
+    def issue(self, repo: str, number: int) -> GitIssue | None: ...
+
+    def usage(self) -> dict:
+        """requests, not_modified (since start), rate_limit, rate_remaining, rate_reset."""
+
+
 # --------------------------------------------------------------------------- MemoryStore
 
 
@@ -337,6 +413,7 @@ PORTS: dict[str, type] = {
     "store": StateStore,
     "tracker": WorkTracker,
     "codehost": CodeHost,
+    "git": GitActivity,
     "memory": MemoryStore,
     "engine": EngineAdapter,
     "prompts": PromptRegistry,
@@ -354,7 +431,7 @@ def is_adapter_for(port: str, obj: object) -> bool:
 
 __all__ = [
     "AgentRuntime", "Deployment", "Host", "Instance", "LLM_METHODS", "Step", "looks_secret",
-    "Change", "CodeHost", "Delivery", "Doc", "EngineAdapter", "Event", "EventBus",
+    "Change", "CodeHost", "GitActivity", "GitCheck", "GitError", "GitIssue", "GitPull", "Delivery", "Doc", "EngineAdapter", "Event", "EventBus",
     "MemoryDoc", "MemoryStore", "Notifier", "PORTS", "Prompt", "PromptRegistry", "Secrets", "StateStore", "WorkItem",
     "WorkTracker", "is_adapter_for",
 ]

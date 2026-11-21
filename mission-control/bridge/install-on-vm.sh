@@ -99,6 +99,28 @@ UNIT
   sleep 3
   systemctl is-active mission-control-handler
 
+  echo "==> systemd service mission-control-poller (GitHub -> factory-events, root's gh login, read-only)"
+  cat > /etc/systemd/system/mission-control-poller.service <<UNIT
+[Unit]
+Description=Mission control git poller: every product's PRs, pushes, checks, issues -> factory-events
+After=network-online.target
+Wants=network-online.target
+[Service]
+Environment=HOME=/root
+Environment=MC_SCHEMA_DIR=$SRC/mission-control/schema
+Environment=GRPC_VERBOSITY=ERROR
+ExecStart=$VENV/bin/python -m mission_control.poller --project $PROJECT --engine $ENGINE --repo $SRC
+Restart=always
+RestartSec=10
+[Install]
+WantedBy=multi-user.target
+UNIT
+  systemctl daemon-reload
+  systemctl enable --now mission-control-poller >/dev/null 2>&1
+  systemctl restart mission-control-poller
+  sleep 3
+  systemctl is-active mission-control-poller
+
   echo "==> systemd service factory-console (unix socket, no TCP port)"
   groupadd -f factory-operators      # who may use the console; bin/gcp/console.sh adds OS Login admins
   cat > /etc/systemd/system/factory-console.service <<UNIT

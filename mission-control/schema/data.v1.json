@@ -1330,6 +1330,409 @@
           }
         }
       }
+    },
+    "git_pull": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product",
+        "repo",
+        "change",
+        "pr",
+        "title",
+        "state",
+        "head",
+        "base"
+      ],
+      "properties": {
+        "product": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        },
+        "initial": {
+          "type": "boolean",
+          "description": "sent when the poller first saw this repository: state that already existed, not a new happening"
+        },
+        "change": {
+          "type": "string",
+          "pattern": "^codehost:[a-z0-9-]+/.+#[0-9]+$"
+        },
+        "pr": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "state": {
+          "enum": [
+            "open",
+            "closed",
+            "merged"
+          ]
+        },
+        "head": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "previous_head": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "base": {
+          "type": "string",
+          "maxLength": 255
+        },
+        "author": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "url": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "draft": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+        },
+        "updated_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+        },
+        "closed_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+        },
+        "merged_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+        },
+        "reopened": {
+          "type": "boolean"
+        }
+      }
+    },
+    "pullrequest.opened": {
+      "$ref": "#/$defs/git_pull"
+    },
+    "pullrequest.updated": {
+      "$ref": "#/$defs/git_pull"
+    },
+    "pullrequest.merged": {
+      "$ref": "#/$defs/git_pull"
+    },
+    "pullrequest.closed": {
+      "$ref": "#/$defs/git_pull"
+    },
+    "check.completed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product",
+        "repo",
+        "change",
+        "pr",
+        "head",
+        "name",
+        "check_id",
+        "conclusion"
+      ],
+      "properties": {
+        "product": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        },
+        "initial": {
+          "type": "boolean",
+          "description": "sent when the poller first saw this repository: state that already existed, not a new happening"
+        },
+        "change": {
+          "type": "string",
+          "pattern": "^codehost:[a-z0-9-]+/.+#[0-9]+$"
+        },
+        "pr": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "head": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "check_id": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "conclusion": {
+          "enum": [
+            "success",
+            "failure",
+            "neutral",
+            "cancelled",
+            "skipped",
+            "timed_out",
+            "action_required",
+            "stale",
+            "unknown"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "completed_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+        }
+      }
+    },
+    "git_issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product",
+        "repo",
+        "work_item",
+        "number",
+        "title",
+        "state"
+      ],
+      "properties": {
+        "product": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        },
+        "initial": {
+          "type": "boolean",
+          "description": "sent when the poller first saw this repository: state that already existed, not a new happening"
+        },
+        "work_item": {
+          "type": "string",
+          "pattern": "^tracker:[a-z0-9-]+/.+$"
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "state": {
+          "enum": [
+            "open",
+            "closed"
+          ]
+        },
+        "labels": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        "author": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "url": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "created_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+        },
+        "updated_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+        },
+        "closed_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+        },
+        "reopened": {
+          "type": "boolean"
+        }
+      }
+    },
+    "workitem.opened": {
+      "$ref": "#/$defs/git_issue"
+    },
+    "workitem.updated": {
+      "$ref": "#/$defs/git_issue"
+    },
+    "workitem.closed": {
+      "$ref": "#/$defs/git_issue"
+    },
+    "branch.pushed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product",
+        "repo",
+        "branch",
+        "head"
+      ],
+      "properties": {
+        "product": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        },
+        "initial": {
+          "type": "boolean",
+          "description": "sent when the poller first saw this repository: state that already existed, not a new happening"
+        },
+        "branch": {
+          "type": "string",
+          "maxLength": 255
+        },
+        "head": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "previous": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        }
+      }
+    },
+    "branch.deleted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product",
+        "repo",
+        "branch"
+      ],
+      "properties": {
+        "product": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        },
+        "initial": {
+          "type": "boolean",
+          "description": "sent when the poller first saw this repository: state that already existed, not a new happening"
+        },
+        "branch": {
+          "type": "string",
+          "maxLength": 255
+        },
+        "previous": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        }
+      }
+    },
+    "codehost.polled": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product",
+        "repo",
+        "ok"
+      ],
+      "properties": {
+        "product": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "error_kind": {
+          "enum": [
+            "auth",
+            "rate_limited",
+            "not_found",
+            "http",
+            "network",
+            "other"
+          ]
+        },
+        "open_prs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "open_issues": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "branches": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "base_branch": {
+          "type": "string"
+        },
+        "base_head": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "interval_s": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "authenticated": {
+          "type": "boolean"
+        },
+        "requests": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "not_modified": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rate_limit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rate_remaining": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rate_reset": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+        }
+      }
     }
   }
 }
