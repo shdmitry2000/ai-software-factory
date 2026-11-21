@@ -3,7 +3,7 @@
 How the factory installs, deploys and runs its parts (agents and system components)
 on the main node and on other servers in the sandbox, all driven from the console.
 
-Status: 2026-11-21. R1 done; R2 code done (live run on factory-1 pending). Replaces the GKE-first approach of Stage O-B and the
+Status: 2026-11-21. R1 and R2 done (compliance agent live on factory-1 since 2026-11-21). Replaces the GKE-first approach of Stage O-B and the
 old Stage R (fleet). Architecture: [architecture.md](architecture.md). Console:
 [console-ui-plan.md](console-ui-plan.md).
 
