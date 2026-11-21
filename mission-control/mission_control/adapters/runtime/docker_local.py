@@ -190,7 +190,8 @@ class DockerLocal:
             args += ["--cpus", d.cpus]
         if d.memory:
             args += ["--memory", d.memory]
-        env = {"AGENT_ID": f"{d.component}-{i}@{d.host}", "AGENT_LOCATION": f"docker:{d.host}/{name}",
+        # AGENT_ID becomes the event's factoryengine and source host: [a-z0-9-] only.
+        env = {"AGENT_ID": agent_id(d, i), "AGENT_LOCATION": f"docker:{d.host}/{name}",
                "FACTORY_DEPLOYMENT": d.id, **d.env}
         if d.digest:
             env.setdefault("AGENT_VERSION", d.digest[:19])
@@ -252,6 +253,12 @@ class DockerLocal:
             name = c["Name"].lstrip("/")
             self._run(verb, *extra, name)
             yield Step(verb, True, name)
+
+
+def agent_id(d: Deployment, i: int) -> str:
+    """Stable id of one replica, valid as an event `factoryengine` (^[a-z0-9][a-z0-9-]*$)."""
+    raw = f"{d.component}-{i}-{d.host}".lower()
+    return "".join(c if c.isalnum() or c == "-" else "-" for c in raw).strip("-")
 
 
 def _name(d: Deployment, i: int) -> str:
