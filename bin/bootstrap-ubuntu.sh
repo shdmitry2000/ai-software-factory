@@ -35,9 +35,9 @@ fi
 
 say() { printf '\n==> %s\n' "$*"; }
 
-say "apt: git, python3, curl, unzip"
+say "apt: git, python3 (+ python), curl, unzip"
 apt-get update -qq
-apt-get install -y -qq git python3 curl wget unzip ca-certificates gnupg debian-keyring debian-archive-keyring apt-transport-https >/dev/null
+apt-get install -y -qq git python3 python-is-python3 curl wget unzip ca-certificates gnupg debian-keyring debian-archive-keyring apt-transport-https >/dev/null
 
 say "caddy from its own apt repo (Ubuntu ships a build years behind)"
 if ! command -v caddy >/dev/null 2>&1 || ! [ -f /etc/apt/sources.list.d/caddy-stable.list ]; then

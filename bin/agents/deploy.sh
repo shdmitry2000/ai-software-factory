@@ -17,6 +17,14 @@ TAG=$(git -C "$ROOT" rev-parse --short=12 HEAD 2>/dev/null || date +%Y%m%d%H%M)
 IMAGE=factory/agent:$TAG
 rt() { PYTHONPATH="$ROOT/mission-control" python3 -m mission_control.runtime "$@"; }
 
+echo "==> docker"
+if ! command -v docker >/dev/null; then          # the rebuilt VM has none; Ubuntu's package is enough
+  DEBIAN_FRONTEND=noninteractive apt-get update -qq
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker.io >/dev/null
+  systemctl enable --now docker >/dev/null
+fi
+docker version --format '    server {{.Server.Version}}'
+
 echo "==> image $IMAGE"
 docker build -q -f "$ROOT/agents/image/Dockerfile" -t "$IMAGE" "$ROOT" >/dev/null
 ID=$(docker image inspect --format '{{.Id}}' "$IMAGE")

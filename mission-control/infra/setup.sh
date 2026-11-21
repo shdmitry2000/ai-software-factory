@@ -15,8 +15,14 @@ gcloud services enable firestore.googleapis.com pubsub.googleapis.com run.google
   artifactregistry.googleapis.com cloudscheduler.googleapis.com $G
 
 say "Firestore (native mode, $FS_LOCATION)"
-gcloud firestore databases describe --database='(default)' $G >/dev/null 2>&1 ||
-  gcloud firestore databases create --database='(default)' --location="$FS_LOCATION" --type=firestore-native $G
+# The database survives the weekend sweep, but right after the API is re-enabled
+# `describe` can still say SERVICE_DISABLED; "already exists" from create is success.
+if ! gcloud firestore databases describe --database='(default)' $G >/dev/null 2>&1; then
+  out=$(gcloud firestore databases create --database='(default)' --location="$FS_LOCATION" \
+        --type=firestore-native $G 2>&1) || {
+    grep -q "already exists" <<<"$out" || { echo "$out" >&2; exit 1; }
+    echo "    (default) already exists"; }
+fi
 
 say "Pub/Sub topics"
 for t in factory-events factory-events-dlq factory-commands; do
