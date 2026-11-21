@@ -198,3 +198,17 @@ def test_hosts_view_lists_console_vms():
     rows = views.hosts(store, datetime.now(timezone.utc), spec())
     assert [r["host"] for r in rows] == ["local", "agent-1"]
     assert rows[1]["in_git"] is False and rows[1]["desired"]["machine_type"] == "e2-small"
+
+
+def test_a_late_heartbeat_does_not_revive_a_removed_host(env):
+    h, store, fleet, gce, remotes, _ = env
+    run(h, store, "host.create", "agent-1")
+    late = h.beat_hosts()                                   # in flight while the host is removed
+    run(h, store, "host.remove", "agent-1")
+    for ev in late:
+        projections.project(ev, store)
+    assert store.get("hosts", "agent-1")["state"] == "removed"
+    from datetime import datetime, timezone
+    assert [r["host"] for r in views.hosts(store, datetime.now(timezone.utc), spec())] == ["local"]
+    store.upsert("hosts", "agent-2", {"host": "agent-2", "kind": "vm", "state": "unreachable"})   # no desired: gone
+    assert not [p for p in views.problems(store, datetime.now(timezone.utc)) if p.key.startswith("agent-")]

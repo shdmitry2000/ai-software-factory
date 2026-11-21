@@ -222,7 +222,12 @@ class Problem:
         return f"{self.kind}:{self.key}"
 
 
-def problems(store: StateStore, at: datetime) -> list[Problem]:
+def _gone(h: dict) -> bool:
+    """A VM host that was removed (or never had a desired state from a host command)."""
+    return h.get("state") == "removed" or (h.get("host") != "local" and h.get("kind") == "vm" and not h.get("desired"))
+
+
+def problems(store: StateStore, at: datetime, spec_hosts: set[str] | None = None) -> list[Problem]:
     out: list[Problem] = []
     for e in engines(store, at):
         if not e["alive"]:
@@ -246,7 +251,7 @@ def problems(store: StateStore, at: datetime) -> list[Problem]:
                                str(d.get("error", ""))[:300], "/audit", d.get("updated_at", ""), d.get("deployment", "")))
     for h in store.query("hosts"):
         hid, a = h.get("host", ""), age_s(h.get("last_heartbeat"), at)
-        if h.get("state") == "removed":
+        if _gone(h) and not (spec_hosts and hid in spec_hosts):
             continue
         health = h.get("health") or {}
         if h.get("last_heartbeat") and (a is None or a >= SILENT_S):
@@ -334,7 +339,7 @@ def hosts(store: StateStore, at: datetime, spec=None) -> list[dict]:
     out = []
     for hid in sorted(ids, key=lambda h: (h != "local", h)):
         doc = docs.get(hid) or {}
-        if doc.get("state") == "removed" and not (spec and hid in spec.hosts):
+        if _gone(doc) and not (spec and hid in spec.hosts):
             continue
         hs = spec.hosts.get(hid) if spec else None
         a = age_s(doc.get("last_heartbeat"), at)

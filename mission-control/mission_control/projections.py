@@ -214,7 +214,7 @@ def _apply_host(doc: dict | None, ev: Event, kind: str) -> dict:
             return d
         health = {k: v for k, v in data.items() if k != "host"}
         d.update(kind=data.get("kind", d.get("kind")), last_heartbeat=t, health=health)
-        if d.get("state") != "removed" or t > d.get("changed_at", ""):
+        if d.get("state") != "removed":             # a late heartbeat never revives a removed host
             d["state"] = data.get("state")
         if data.get("address"):
             d["address"] = data["address"]
