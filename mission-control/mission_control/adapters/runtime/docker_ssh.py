@@ -109,7 +109,8 @@ class DockerSSH(DockerLocal):
         if save.returncode or load.returncode:
             err = load.stderr.strip() or (save.stderr.read().decode(errors="replace").strip() if save.stderr else "")
             return False, f"shipping {ref[:19]} to {self.host_id} failed: {err[-300:]}"
-        return True, f"{ref[:19]} → {self.host_id} ({load.stdout.strip()[-80:]})"
+        last = (load.stdout.strip().splitlines() or [""])[-1]
+        return True, f"{ref[:19]} → {self.host_id} ({last[:100]})"
 
     # ------------------------------------------------------------------ hosts
     def hosts(self) -> list[Host]:

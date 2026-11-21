@@ -23,7 +23,7 @@
     <tbody>
     {% for a in agents %}
     <tr><td><span class="dot {{ 'on' if a.fresh else 'off' }}"></span></td><td><b>{{ a.agent_id }}</b><div class="muted">{{ a.kind }}</div></td>
-      <td>{{ status(a.state) }}</td><td class="mono">{{ a.location }}</td><td>{{ (a.products or [])|join(', ') }}</td>
+      <td>{% if a.retired and not a.fresh %}{{ status('retired') }}{% else %}{{ status(a.state) }}{% endif %}</td><td class="mono">{{ a.location }}</td><td>{{ (a.products or [])|join(', ') }}</td>
       <td class="mono">{{ a.model or '' }}</td><td>{{ a.auth_method or '' }}</td>
       <td class="nowrap">{{ a.reports_today or 0 }} reports · ${{ '%.4f'|format(a.spent_usd_today or 0) }}</td>
       <td class="mono">{{ (a.version or '')[7:19] if (a.version or '').startswith('sha256:') else a.version }}</td><td class="nowrap">{{ a.ago }}</td></tr>

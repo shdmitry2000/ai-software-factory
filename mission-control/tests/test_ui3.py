@@ -274,3 +274,18 @@ def test_a_deployment_without_desired_state_keeps_its_running_image(env):
     _, c = run(h, store, "deployment.apply")
     assert c["status"] == "succeeded" and builder.built == []
     assert store.get("deployments", "compliance@local")["desired"]["digest"] == D2
+
+
+def test_retired_agents_are_not_silent_problems():
+    store = registry.get("store", "memory")()
+    at = datetime(2026, 11, 21, 12, 0, tzinfo=timezone.utc)
+    old = "2026-11-21T10:00:00+00:00"
+    store.upsert("agents", "compliance-1-agent-1", {"agent_id": "compliance-1-agent-1", "last_heartbeat": old,
+                                                    "location": "docker:agent-1/factory-compliance-1"})
+    store.upsert("agents", "compliance-1-local", {"agent_id": "compliance-1-local", "last_heartbeat": old,
+                                                  "location": "docker:local/factory-compliance-1"})
+    store.upsert("deployments", "compliance@agent-1", {"deployment": "compliance@agent-1", "state": "removed", "instances": []})
+    store.upsert("deployments", "compliance@local", {"deployment": "compliance@local", "host": "local", "state": "running",
+                                                     "instances": [{"name": "factory-compliance-1", "state": "running"}]})
+    silent = {p.key for p in views.problems(store, at) if p.kind == "agent.silent"}
+    assert silent == {"compliance-1-local"}

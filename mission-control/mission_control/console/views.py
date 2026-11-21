@@ -63,10 +63,22 @@ def engines(store: StateStore, at: datetime) -> list[dict]:
 
 
 def agents(store: StateStore, at: datetime) -> list[dict]:
+    """Agent instances; `retired` = its container is no longer part of any deployment
+    (removed, scaled down, or its host removed), so its silence is expected."""
+    live: set[tuple[str, str]] = set()
+    for d in store.query("deployments"):
+        host = d.get("host") or str(d.get("deployment", "")).split("@")[-1]
+        live |= {(host, i.get("name", "")) for i in d.get("instances") or []} if d.get("state") != "removed" else set()
     out = []
     for x in sorted(store.query("agents"), key=lambda x: x.get("agent_id", "")):
         a = age_s(x.get("last_heartbeat"), at)
-        out.append({**x, "fresh": a is not None and a < SILENT_S, "ago": ago(x.get("last_heartbeat"), at)})
+        loc = str(x.get("location", ""))
+        retired = False
+        if loc.startswith("docker:"):
+            host, _, name = loc[len("docker:"):].partition("/")
+            retired = (host, name) not in live
+        out.append({**x, "fresh": a is not None and a < SILENT_S, "ago": ago(x.get("last_heartbeat"), at),
+                    "retired": retired})
     return out
 
 
@@ -221,7 +233,7 @@ def problems(store: StateStore, at: datetime) -> list[Problem]:
                                f"no new laps start until it is unhalted{' · by ' + e['halt_by'] if e.get('halt_by') else ''}{': ' + e['halt_reason'] if e.get('halt_reason') else ''}",
                                "/agents", e.get("halt_changed_at", ""), e.get("engine", "")))
     for a in agents(store, at):
-        if not a["fresh"] and a.get("state") != "stopped":
+        if not a["fresh"] and a.get("state") != "stopped" and not a["retired"]:
             out.append(Problem("warning", "agent.silent", f"Agent {a.get('agent_id')} is silent",
                                f"last heartbeat {a['ago']}", "/agents", a.get("last_heartbeat", ""), a.get("agent_id", "")))
     for d in deployments(store, at):
