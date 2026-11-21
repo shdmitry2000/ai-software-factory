@@ -716,7 +716,7 @@
         "action": {
           "type": "string",
           "pattern": "^[a-z]+\\.[a-z_]+$",
-          "description": "deployment.apply|start|stop|restart|remove|scale; later engine.halt, product.update \u2026"
+          "description": "deployment.apply|start|stop|restart|remove|scale; later engine.halt, product.update …"
         },
         "target": {
           "type": "string",
@@ -880,6 +880,39 @@
               }
             },
             "additionalProperties": false
+          }
+        },
+        "desired": {
+          "type": "object",
+          "required": [
+            "component",
+            "host",
+            "replicas"
+          ],
+          "additionalProperties": false,
+          "description": "the deployment's desired state after this command (what restore reapplies)",
+          "properties": {
+            "component": {
+              "type": "string"
+            },
+            "host": {
+              "type": "string"
+            },
+            "replicas": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20
+            },
+            "digest": {
+              "type": "string"
+            },
+            "products": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 10
+            }
           }
         }
       },
@@ -1113,6 +1146,188 @@
         "error": {
           "type": "string",
           "maxLength": 600
+        }
+      }
+    },
+    "host.heartbeat": {
+      "type": "object",
+      "required": [
+        "host",
+        "kind",
+        "state"
+      ],
+      "additionalProperties": false,
+      "description": "health of one host, from the command handler on the main node every 60 s",
+      "properties": {
+        "host": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,40}$"
+        },
+        "kind": {
+          "enum": [
+            "local",
+            "vm"
+          ]
+        },
+        "state": {
+          "enum": [
+            "healthy",
+            "unreachable",
+            "installing",
+            "degraded"
+          ]
+        },
+        "address": {
+          "type": "string"
+        },
+        "docker": {
+          "type": "string"
+        },
+        "cpus": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "load1": {
+          "type": "number",
+          "minimum": 0
+        },
+        "mem_total_mb": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mem_used_pct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "disk_total_gb": {
+          "type": "number",
+          "minimum": 0
+        },
+        "disk_used_pct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "containers": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "error": {
+          "type": "string",
+          "maxLength": 300
+        }
+      }
+    },
+    "host.step": {
+      "type": "object",
+      "required": [
+        "command_id",
+        "host",
+        "seq",
+        "step",
+        "ok"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        },
+        "host": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,40}$"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "step": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "detail": {
+          "type": "string",
+          "maxLength": 600
+        }
+      }
+    },
+    "host.changed": {
+      "type": "object",
+      "required": [
+        "command_id",
+        "host",
+        "action",
+        "ok"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        },
+        "host": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,40}$"
+        },
+        "action": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "string",
+          "maxLength": 600
+        },
+        "kind": {
+          "enum": [
+            "local",
+            "vm"
+          ]
+        },
+        "state": {
+          "enum": [
+            "healthy",
+            "unreachable",
+            "installing",
+            "degraded",
+            "removed",
+            "created"
+          ]
+        },
+        "address": {
+          "type": "string"
+        },
+        "desired": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "local",
+                "vm"
+              ]
+            },
+            "machine_type": {
+              "type": "string"
+            },
+            "zone": {
+              "type": "string"
+            },
+            "labels": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          }
         }
       }
     }

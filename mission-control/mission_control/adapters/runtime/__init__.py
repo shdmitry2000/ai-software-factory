@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import json
 from dataclasses import asdict, replace
+from pathlib import Path
 
 from mission_control.ports import LLM_METHODS, Deployment, looks_secret
 
@@ -69,3 +71,40 @@ def credential_lines(llm: str, source: dict[str, str]) -> list[str]:
     if not got:
         raise LookupError(f"llm={llm} needs one of {', '.join(keys)} in the main node's login file")
     return got[:1]
+
+
+def mask(line: str, source: dict[str, str]) -> str:
+    """Replace any credential value of the login file that appears in a log line."""
+    for k in {k for keys in CREDENTIAL_KEYS.values() for k in keys}:
+        v = source.get(k, "")
+        if len(v) >= 8 and v in line:
+            line = line.replace(v, f"[{k} masked]")
+    return line
+
+
+def host_facts(proc: str = "/proc", root: str = "/") -> dict:
+    """Health numbers of the machine this runs on (Linux /proc); partial on other systems."""
+    import shutil
+    out: dict = {}
+    try:
+        out["cpus"] = os.cpu_count() or 0
+        out["load1"] = round(float(Path(proc, "loadavg").read_text().split()[0]), 2)
+    except (OSError, ValueError, IndexError):
+        pass
+    try:
+        mem = {}
+        for line in Path(proc, "meminfo").read_text().splitlines():
+            k, _, v = line.partition(":")
+            mem[k] = int(v.split()[0])
+        total, avail = mem["MemTotal"], mem.get("MemAvailable", mem.get("MemFree", 0))
+        out["mem_total_mb"] = total // 1024
+        out["mem_used_pct"] = round(100 * (total - avail) / total, 1) if total else 0.0
+    except (OSError, KeyError, ValueError, IndexError):
+        pass
+    try:
+        du = shutil.disk_usage(root)
+        out["disk_total_gb"] = round(du.total / 2**30, 1)
+        out["disk_used_pct"] = round(100 * du.used / du.total, 1) if du.total else 0.0
+    except OSError:
+        pass
+    return out

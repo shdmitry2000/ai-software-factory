@@ -43,6 +43,11 @@ log = logging.getLogger("mission_control.handler")
 DEPLOYMENT_ID = re.compile(r"^[a-z][a-z0-9-]*@[a-z][a-z0-9-]*$")
 PRODUCT_ID = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 PROBLEM_ID = re.compile(r"^[a-z_]+\.[a-z_]+:[^/\s]{1,180}$")
+DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
+HOST_STATES = {"healthy", "unreachable", "installing", "degraded"}
+HOST_FACTS = {"docker": str, "cpus": int, "load1": float, "mem_total_mb": int, "mem_used_pct": float,
+              "disk_total_gb": float, "disk_used_pct": float, "containers": int, "error": str}
+LOGS_SOCKET = "/run/mission-control-handler/logs.sock"
 DEPLOYMENT_ACTIONS = {"deployment.apply", "deployment.start", "deployment.stop", "deployment.restart",
                       "deployment.remove", "deployment.scale"}
 ACTIONS = DEPLOYMENT_ACTIONS | {"product.update", "engine.halt", "engine.unhalt", "problem.ack", "problem.resolve"}
@@ -171,26 +176,87 @@ class CommandHandler:
         if not DEPLOYMENT_ID.match(target):
             return f"target must be a deployment id like compliance@local, not {target!r}"
         if action == "deployment.scale":
-            r = args.get("replicas")
-            if not isinstance(r, int) or isinstance(r, bool) or not 0 <= r <= 20:
+            r = _int(args.get("replicas"))
+            if r is None or not 0 <= r <= 20:
                 return "deployment.scale needs args.replicas, an integer 0..20"
+            args["replicas"] = r
         if action == "deployment.apply":
             try:
-                spec = self.spec_loader()
+                self._plan(target, args)
             except deployspec.SpecError as e:
                 return f"deploy files are invalid: {'; '.join(e.problems)[:400]}"
-            ds = spec.deployments.get(target)
-            if ds is None:
-                return f"{target} is not in deploy/deployments.yaml"
-            c = spec.components[ds.component]
-            if not (args.get("digest") or ds.digest or (c.build and self.builder is not None)):
-                return f"{target}: no image digest given or pinned, and nothing can build {c.name}"
+            except ValueError as e:
+                return str(e)[:500]
         return ""
+
+    # ---------------------------------------------------------------- desired state
+    def _stored(self, collection: str, doc_id: str) -> dict:
+        if self.store is None:
+            return {}
+        try:
+            return self.store.get(collection, doc_id) or {}
+        except Exception:
+            return {}
+
+    def _known_hosts(self, spec: deployspec.Spec) -> set[str]:
+        known = set(spec.hosts)
+        if self.store is not None:
+            try:
+                known |= {h["host"] for h in self.store.query("hosts")
+                          if h.get("host") and h.get("desired") and h.get("state") != "removed"}
+            except Exception:
+                pass
+        return known
+
+    def _plan(self, target: str, args: dict) -> tuple[deployspec.Spec, deployspec.DeploymentSpec, str]:
+        """What deployment.apply will run: (spec, entry, digest; "" = build first).
+
+        The entry starts from the last applied desired state (deployments/{id}.desired),
+        else deploy/deployments.yaml, else the target itself (a new deployment from the
+        console); then args override it: replicas, products, digest; `build` builds the
+        checkout's HEAD instead of the pinned digest; `reset` ignores the stored state."""
+        spec = self.spec_loader()
+        component, host = target.split("@", 1)
+        stored = {} if args.get("reset") else (self._stored("deployments", target).get("desired") or {})
+        ds = spec.deployments.get(target) or deployspec.DeploymentSpec(component, host)
+        if stored:
+            ds = replace(ds, replicas=int(stored.get("replicas", ds.replicas)),
+                         products=tuple(stored.get("products") or ds.products), digest=stored.get("digest", ds.digest))
+        if "replicas" in args:
+            r = _int(args["replicas"])
+            if r is None or not 0 <= r <= 20:
+                raise ValueError("replicas must be an integer 0..20")
+            args["replicas"] = r
+            ds = replace(ds, replicas=r)
+        if args.get("products"):
+            ps = args["products"]
+            ds = replace(ds, products=tuple(x.strip() for x in (ps.split(",") if isinstance(ps, str) else ps) if x.strip()))
+        if not ds.products and component in spec.components and spec.components[component].per_product:
+            names = self._product_names()
+            if names and len(names) == 1:
+                ds = replace(ds, products=tuple(names))
+        problems = deployspec.check_entry(spec, ds, hosts=self._known_hosts(spec), product_names=self._product_names())
+        if problems:
+            raise ValueError(f"{target}: " + "; ".join(problems))
+        digest = str(args.get("digest") or "")
+        if digest and not DIGEST.match(digest):
+            raise ValueError("digest must look like sha256:<64 hex>")
+        if not digest and not _truthy(args.get("build")):
+            digest = ds.digest
+        c = spec.components[component]
+        if not digest and not (c.build and self.builder is not None):
+            raise ValueError(f"{target}: no image digest given or pinned, and nothing can build {c.name}")
+        return spec, replace(ds, digest=digest), digest
+
+    def _product_names(self) -> set[str] | None:
+        if self.products_dir is None:
+            return None
+        return {p.stem for p in Path(self.products_dir).glob("*.yaml")}
 
     def _run(self, action: str, target: str, args: dict, extra: dict) -> Iterator[Step]:
         if action == "deployment.apply":
-            spec = self.spec_loader()
-            dep = deployspec.resolve(spec, target, vars=self.vars, digest=str(args.get("digest", "")))
+            spec, ds, digest = self._plan(target, args)
+            dep = deployspec.resolve_entry(spec, ds, vars=self.vars, digest=digest)
             c = spec.components[dep.component]
             if not dep.digest:
                 digest = yield from self.builder.build(c)
@@ -198,9 +264,20 @@ class CommandHandler:
                     return
                 dep = replace(dep, digest=digest)
             extra.update(digest=dep.digest, image=dep.image)
-            yield from self.runtime.apply(dep)
+            steps_ok = True
+            for st in self.runtime.apply(dep):
+                steps_ok &= st.ok
+                yield st
+            if steps_ok:
+                extra["desired"] = _desired(replace(ds, digest=dep.digest))
         elif action == "deployment.scale":
-            yield from self.runtime.scale(target, args["replicas"])
+            ok = True
+            for st in self.runtime.scale(target, args["replicas"]):
+                ok &= st.ok
+                yield st
+            stored = self._stored("deployments", target).get("desired")
+            if ok and stored:
+                extra["desired"] = {**stored, "replicas": args["replicas"]}
         else:
             yield from getattr(self.runtime, action.split(".", 1)[1])(target)
 
@@ -308,22 +385,130 @@ class CommandHandler:
                                      f"product-{name}"))
         return out
 
+    # ---------------------------------------------------------------- hosts and logs
+    def beat_hosts(self) -> list[Event]:
+        """One host.heartbeat per host the runtime serves."""
+        out: list[Event] = []
+        minute = time.strftime("%Y%m%dT%H%M", time.gmtime())
+        for h in self.runtime.hosts():
+            try:
+                facts = self.runtime.health(h.id)
+            except Exception as e:                      # report, never crash the loop
+                facts = {"state": "unreachable", "error": f"{type(e).__name__}: {e}"}
+            data = {"host": h.id, "kind": h.kind if h.kind in ("local", "vm") else "vm",
+                    "state": facts.get("state") if facts.get("state") in HOST_STATES else "degraded"}
+            if h.address:
+                data["address"] = h.address
+            for k, conv in HOST_FACTS.items():
+                if facts.get(k) not in (None, ""):
+                    try:
+                        data[k] = conv(facts[k])
+                    except (TypeError, ValueError):
+                        pass
+            if "error" in data:
+                data["error"] = data["error"][:300]
+            out.append(self._publish("dev.factory.host.heartbeat", f"host-heartbeat:{h.id}:{minute}",
+                                     f"host/{h.id}", data, f"host-{h.id}"))
+        return out
+
+    def logs_server(self, path: str):
+        """Serve deployment logs on a unix socket (root only) for the console.
+
+        Request: one JSON line {"deployment": id, "tail": n, "follow": bool}.
+        Reply: "ok" or "error: …", then log lines (masked by the runtime) until the
+        client hangs up (follow) or the lines end."""
+        import json as json_mod
+        import socketserver
+        import threading
+        runtime = self.runtime
+
+        class Handler(socketserver.StreamRequestHandler):
+            def handle(self):
+                try:
+                    req = json_mod.loads(self.rfile.readline(4096) or b"{}")
+                    dep = str(req.get("deployment", ""))
+                    tail = max(0, min(int(req.get("tail", 200)), 2000))
+                    follow = bool(req.get("follow"))
+                    if not DEPLOYMENT_ID.match(dep):
+                        raise ValueError(f"not a deployment id: {dep!r}")
+                    lines = runtime.follow_logs(dep, tail=tail) if follow else iter(runtime.logs(dep, tail=tail))
+                except Exception as e:
+                    self.wfile.write(f"error: {type(e).__name__}: {e}\n".encode()[:500])
+                    return
+                try:
+                    self.wfile.write(b"ok\n")
+                    for line in lines:
+                        self.wfile.write((line[:4000] + "\n").encode("utf-8", "replace"))
+                        self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    pass
+                finally:
+                    close = getattr(lines, "close", None)
+                    if close:
+                        close()
+
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+        Path(path).parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        old = os.umask(0o177)
+        try:
+            srv = socketserver.ThreadingUnixStreamServer(path, Handler)
+        finally:
+            os.umask(old)
+        srv.daemon_threads = True
+        threading.Thread(target=srv.serve_forever, name="logs", daemon=True).start()
+        log.info("logs on %s", path)
+        return srv
+
     # ---------------------------------------------------------------- loop
     def serve(self, subscription: str, *, max_messages: int = 5, timeout_s: float = 10.0,
-              stop: Callable[[], bool] = lambda: False) -> None:
+              stop: Callable[[], bool] = lambda: False, beat_s: float = 60.0) -> None:
         log.info("handling commands from %s as %s", subscription, self.engine)
         try:
             for ev in self.sync_products():
                 log.info("registered %s", ev["subject"])
         except Exception:
             log.exception("product sync failed; commands are still handled")
+        next_beat = 0.0
         while not stop():
+            if time.monotonic() >= next_beat:
+                next_beat = time.monotonic() + beat_s
+                try:
+                    self.beat_hosts()
+                except Exception:
+                    log.exception("host heartbeat failed")
             for d in self.bus.pull(subscription, max_messages=max_messages, timeout_s=timeout_s):
                 d.ack()                                  # at most once; the audit shows what happened
                 try:
                     self.handle(d.event)
                 except Exception:
                     log.exception("command %s failed outside its own reporting", d.event.get("id"))
+
+
+def _int(v) -> int | None:
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, int):
+        return v
+    try:
+        return int(str(v).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _truthy(v) -> bool:
+    return v is True or str(v).lower() in ("1", "true", "yes", "on")
+
+
+def _desired(ds: deployspec.DeploymentSpec) -> dict:
+    d = {"component": ds.component, "host": ds.host, "replicas": ds.replicas}
+    if ds.digest:
+        d["digest"] = ds.digest
+    if ds.products:
+        d["products"] = list(ds.products)
+    return d
 
 
 def issue(bus: EventBus, topic: str, action: str, target: str, *, who: str, reason: str,
@@ -359,6 +544,7 @@ def main(argv: list[str] | None = None) -> int:
     sv.add_argument("--subscription", default="factory-commands-handler")
     sv.add_argument("--repo", default=str(deployspec.ROOT), help="checkout used for deploy/, products/, prompts/ and builds")
     sv.add_argument("--app-dir", default="", help="product checkout with factory/consumer.py (halt/unhalt)")
+    sv.add_argument("--logs-socket", default=LOGS_SOCKET, help="unix socket the console reads logs from ('' = off)")
     sd = sub.add_parser("send")
     sd.add_argument("action")
     sd.add_argument("target")
@@ -386,6 +572,8 @@ def main(argv: list[str] | None = None) -> int:
                            products_dir=repo / "products",
                            prompts=registry.get("prompts", "files")(root=str(repo / "prompts")),
                            app_dir=Path(o.app_dir) if o.app_dir else None)
+        if o.logs_socket:
+            h.logs_server(o.logs_socket)
         h.serve(o.subscription)
         return 0
 

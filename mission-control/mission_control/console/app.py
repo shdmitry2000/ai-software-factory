@@ -17,7 +17,12 @@ request must name a localhost Host, so another web page cannot act through the t
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+import html
+import json
+import re
+import subprocess
+import time
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from urllib.parse import urlencode, urlparse
 
@@ -26,6 +31,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from mission_control import deployspec
 from mission_control import handler as handler_mod
 from mission_control.console import views
 from mission_control.console.peercred import GROUP, Operator, operator_for
@@ -42,7 +48,7 @@ SCREENS = [
     ("problems", "Problems", "UI-1"), ("memories", "Memories", "UI-6"), ("prompts", "Prompts", "UI-6"),
     ("audit", "Audit", "UI-2"),
 ]
-BUILT = {"UI-0", "UI-1", "UI-2"}
+BUILT = {"UI-0", "UI-1", "UI-2", "UI-3"}
 LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1", "console")
 OPEN_PATHS = ("/api/health", "/static/")
 
@@ -52,7 +58,9 @@ def create_app(store: StateStore, *, resolve: Callable[[tuple | None], Operator 
                engine: str = "factory-1", poll_s: float = 1.5, demo: bool = False,
                products_dir: str | Path = ROOT / "products", bus: EventBus | None = None,
                commands_topic: str = "factory-commands", prompts=None,
-               allowed_hosts: tuple[str, ...] = LOCAL_HOSTS) -> FastAPI:
+               allowed_hosts: tuple[str, ...] = LOCAL_HOSTS, deploy_dir: str | Path = ROOT / "deploy",
+               logs_socket: str = handler_mod.LOGS_SOCKET, logs_source=None,
+               counts_ttl_s: float = 60.0) -> FastAPI:
     """`resolve` maps the socket peer (pid, uid, gid) to an Operator; `dev_operator`
     lets a local TCP run (no peer credentials) in under that name, for development."""
     app = FastAPI(title="Factory console", docs_url=None, redoc_url=None, openapi_url="/api/openapi.json")
@@ -60,6 +68,31 @@ def create_app(store: StateStore, *, resolve: Callable[[tuple | None], Operator 
     app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
     resolve = resolve or (lambda creds: operator_for(creds[1]) if creds else None)
     pdir = Path(products_dir)
+    ddir = Path(deploy_dir)
+    logs_source = logs_source or (lambda dep, tail, follow: socket_logs(logs_socket, dep, tail, follow))
+    counts_cache: dict[tuple, tuple[float, int]] = {}
+
+    def load_spec() -> tuple[deployspec.Spec | None, str]:
+        try:
+            return deployspec.load(ddir, products_dir=pdir), ""
+        except deployspec.SpecError as e:
+            return None, "; ".join(e.problems)[:600]
+        except Exception as e:                      # a broken checkout must not take the page down
+            return None, f"{type(e).__name__}: {e}"[:600]
+
+    def cached_count(where: list) -> int:
+        key = tuple(map(tuple, where))
+        hit = counts_cache.get(key)
+        if hit and time.monotonic() - hit[0] < counts_ttl_s:
+            return hit[1]
+        n = store.count("events", where=where)
+        counts_cache[key] = (time.monotonic(), n)
+        return n
+
+    def build_source() -> str:
+        p = subprocess.run(["git", "-C", str(ddir.parent), "log", "-1", "--format=%h %s"],
+                           capture_output=True, text=True)
+        return p.stdout.strip()[:80] if p.returncode == 0 else ""
 
     @app.middleware("http")
     async def who(request: Request, call_next):
@@ -125,9 +158,21 @@ def create_app(store: StateStore, *, resolve: Callable[[tuple | None], Operator 
                                         status=q.get("status", "")),
                 "q": q, "options": views.audit_filters(store)}
 
+    def data_hosts(q: dict) -> dict:
+        spec, err = load_spec()
+        return {"hosts": views.hosts(store, views.now(), spec), "spec_error": err}
+
+    def data_deploy(q: dict) -> dict:
+        spec, err = load_spec()
+        return {**views.deploy(store, views.now(), spec), "spec_error": err, "source": build_source()}
+
+    def data_chains(q: dict) -> dict:
+        spec, err = load_spec()
+        return {**views.chains(store, views.now(), spec, count=cached_count), "spec_error": err}
+
     SCREEN_DATA = {"": data_overview, "agents": data_agents, "projects": data_projects,
                    "compliance": data_compliance, "runs": data_runs, "problems": data_problems,
-                   "audit": data_audit}
+                   "audit": data_audit, "hosts": data_hosts, "deploy": data_deploy, "chains": data_chains}
     FILTERS = {"compliance": ("product", "status"), "runs": ("status", "product", "workflow"),
                "audit": ("who", "action", "status")}
 
@@ -251,6 +296,96 @@ def create_app(store: StateStore, *, resolve: Callable[[tuple | None], Operator 
                                                 {"field": f, "old": old, "new": new}))
         return sent_response(request, sent)
 
+    @app.get("/panels/deploy", response_class=HTMLResponse)
+    async def deploy_form(request: Request, component: str = "", host: str = ""):
+        """The deploy dialog, shown in the panel above the screen (live refresh leaves it alone)."""
+        def data():
+            spec, err = load_spec()
+            hs = [h for h in views.hosts(store, views.now(), spec) if h["state"] in ("healthy", "unknown") or h["host"] == "local"]
+            return {"spec": spec, "spec_error": err, "hosts": hs, "component": component, "host": host,
+                    "products": sorted(p.stem for p in pdir.glob("*.yaml")),
+                    "deploy": views.deploy(store, views.now(), spec), "source": build_source()}
+        d = await asyncio.to_thread(data)
+        return templates.TemplateResponse(request, "_deploy_form.html", ctx(request, "deploy", **d))
+
+    @app.post("/deploy", response_class=HTMLResponse)
+    async def deploy_post(request: Request):
+        """deployment.apply for component@host with the dialog's choices."""
+        why = refuse_unsafe(request)
+        if why:
+            return sent_response(request, [], why, 403)
+        form = await request.form()
+        comp, host = str(form.get("component", "")), str(form.get("host", ""))
+        reason = str(form.get("reason", "")).strip()
+        if len(reason) < 3:
+            return sent_response(request, [], "say why (at least 3 characters); it goes in the audit log", 400)
+        target = f"{comp}@{host}"
+        if not handler_mod.DEPLOYMENT_ID.match(target):
+            return sent_response(request, [], f"choose a component and a host (got {target!r})", 400)
+        args: dict = {}
+        r = str(form.get("replicas", "")).strip()
+        if r:
+            if not r.isdigit():
+                return sent_response(request, [], "replicas must be a whole number", 400)
+            args["replicas"] = int(r)
+        image = str(form.get("image", "build"))
+        if image == "build":
+            args["build"] = "1"
+        elif image != "pinned":
+            args["digest"] = image
+        if form.get("product"):
+            args["products"] = str(form.get("product"))
+        try:
+            sent = [await asyncio.to_thread(send, request, "deployment.apply", target, reason, args)]
+        except ValueError as e:
+            return sent_response(request, [], str(e)[:300], 400)
+        return sent_response(request, sent)
+
+    @app.get("/panels/logs/{dep}", response_class=HTMLResponse)
+    async def logs_panel(request: Request, dep: str, tail: int = 200):
+        if not handler_mod.DEPLOYMENT_ID.match(dep):
+            return HTMLResponse("not a deployment id", status_code=400)
+        return templates.TemplateResponse(request, "_logs.html", {"dep": dep, "tail": max(1, min(tail, 2000))})
+
+    @app.get("/panels/logs/{dep}/stream")
+    async def logs_stream(request: Request, dep: str, tail: int = 200, follow: int = 1):
+        """SSE: `line` events (escaped HTML rows), then `end` when the log closes."""
+        if not handler_mod.DEPLOYMENT_ID.match(dep):
+            return JSONResponse({"error": "not a deployment id"}, status_code=400)
+
+        async def gen():
+            q: asyncio.Queue = asyncio.Queue(maxsize=2000)
+
+            async def pump():
+                try:
+                    async for line in logs_source(dep, max(1, min(tail, 2000)), bool(follow)):
+                        await q.put(line)
+                finally:
+                    try:
+                        q.put_nowait(None)
+                    except asyncio.QueueFull:
+                        pass
+
+            task = asyncio.create_task(pump())
+            try:
+                while True:
+                    try:
+                        line = await asyncio.wait_for(q.get(), timeout=15)
+                    except asyncio.TimeoutError:
+                        if await request.is_disconnected():
+                            return
+                        yield ": keepalive\n\n"
+                        continue
+                    if line is None:
+                        break
+                    yield f"event: line\ndata: <div>{html.escape(line)}</div>\n\n"
+                yield "event: end\ndata: <div class=\"muted\">— end of log —</div>\n\n"
+            finally:
+                task.cancel()
+
+        return StreamingResponse(gen(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
     @app.get("/fragments/command/{cid}", response_class=HTMLResponse)
     async def command_fragment(request: Request, cid: str):
         c = await asyncio.to_thread(store.get, "commands", cid)
@@ -314,3 +449,29 @@ def create_app(store: StateStore, *, resolve: Callable[[tuple | None], Operator 
                                  headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
     return app
+
+
+async def socket_logs(path: str, dep: str, tail: int, follow: bool) -> AsyncIterator[str]:
+    """Log lines from the command handler's logs socket (root only, on the main node)."""
+    try:
+        reader, writer = await asyncio.open_unix_connection(path, limit=1 << 16)
+    except OSError as e:
+        yield f"[console] cannot reach the command handler's logs ({type(e).__name__}); is mission-control-handler running?"
+        return
+    try:
+        writer.write((json.dumps({"deployment": dep, "tail": tail, "follow": follow}) + "\n").encode())
+        await writer.drain()
+        head = (await reader.readline()).decode("utf-8", "replace").strip()
+        if head != "ok":
+            yield f"[handler] {head or 'no answer'}"
+            return
+        while True:
+            raw = await reader.readline()
+            if not raw:
+                return
+            yield ANSI.sub("", raw.decode("utf-8", "replace").rstrip("\n"))
+    finally:
+        writer.close()
+
+
+ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")

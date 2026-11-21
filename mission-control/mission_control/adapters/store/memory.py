@@ -54,6 +54,9 @@ class MemoryStore:
             docs.sort(key=lambda d: d[order_by], reverse=descending)
         return docs[:limit] if limit else docs
 
+    def count(self, collection: str, *, where: Iterable[tuple[str, str, Any]] = ()) -> int:
+        return len(self.query(collection, where=where))
+
     def delete(self, collection: str, doc_id: str) -> None:
         with self._lock:
             self._data.get(collection, {}).pop(doc_id, None)

@@ -101,6 +101,9 @@ new version (`…v2`), never an edit.
 | `dev.factory.command.acknowledged` | `engine/{engine}/command/{id}` | the handler accepted or refused it (with the reason) | command handler (factory-1) |
 | `dev.factory.deployment.step` | `deployment/{id}` | one step of a command on a deployment (build, image, credential, run, verify …) | command handler |
 | `dev.factory.deployment.changed` | `deployment/{id}` | the command's outcome and the deployment's instances after it | command handler |
+| `dev.factory.host.heartbeat` | `host/{id}` | one host's health: state, Docker version, CPU load, memory, disk, container count | command handler, every 60 s per host |
+| `dev.factory.host.step` | `host/{id}` | one step of a host command (create, install, remove, restore) | command handler |
+| `dev.factory.host.changed` | `host/{id}` | the outcome of a host command and the host's desired state after it | command handler |
 | `dev.factory.command.completed` | `engine/{engine}/command/{id}` | outcome of a command that is not a deployment (product, engine, problem) | command handler |
 | `dev.factory.product.registered` | `product/{name}` | the product file's settings (seed), sent when the file changes | command handler at start |
 | `dev.factory.product.updated` | `product/{name}` | one setting changed from the console: field, old, new, who, why | command handler |

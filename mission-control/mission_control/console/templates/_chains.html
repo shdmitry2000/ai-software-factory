@@ -1,0 +1,31 @@
+{% if spec_error %}<section class="card bad">Deploy files: {{ spec_error }}</section>{% endif %}
+<section class="card">
+  <div class="cardhead"><h2>Agent chains</h2><span class="muted">from <span class="mono">deploy/components/*.yaml</span> · counts since {{ since[:10] }} 00:00 UTC</span></div>
+  {% if graph and graph.nodes %}
+  <div class="scroll">
+  <figure class="chain">
+  <svg viewBox="0 0 {{ graph.width }} {{ graph.height }}" role="img" aria-label="Which events start which component and what each emits, with today's counts">
+    <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+    <text x="20" y="22" class="colhead">starts on</text><text x="330" y="22" class="colhead">component</text><text x="560" y="22" class="colhead">emits</text>
+    {% for l in graph.lines %}
+    <line x1="{{ l.x1 }}" y1="{{ l.y1 }}" x2="{{ l.x2 }}" y2="{{ l.y2 }}" class="edge {{ l.kind }}" marker-end="url(#arr)"/>
+    <text x="{{ l.mx }}" y="{{ l.my }}" class="count" text-anchor="middle">{{ l.count if l.count is not none else '?' }}</text>
+    {% endfor %}
+    {% for n in graph.nodes %}
+    <rect x="{{ n.x }}" y="{{ n.y }}" width="{{ n.w }}" height="28" rx="{{ 14 if n.kind == 'event' else 5 }}" class="node {{ n.kind }}"/>
+    <text x="{{ n.x + n.w / 2 }}" y="{{ n.y + 18 }}" text-anchor="middle" class="label {{ n.kind }}">{{ n.label }}</text>
+    {% endfor %}
+  </svg>
+  <figcaption class="muted">Rounded boxes are event types, square boxes are components. A number on an arrow is how many of those events were stored today; for “emits” only this component's own instances count.</figcaption>
+  </figure>
+  </div>
+  {% else %}<p class="muted">No components.</p>{% endif %}
+</section>
+<section class="card">
+  <h2>Edges</h2>
+  <div class="scroll"><table class="compact">
+    <thead><tr><th>From</th><th></th><th>To</th><th>Today</th></tr></thead>
+    <tbody>{% for e in edges %}<tr><td class="mono">{{ e.from|replace('dev.factory.', '') }}</td><td class="muted">{{ e.kind }}</td><td class="mono">{{ e.to|replace('dev.factory.', '') }}</td><td>{{ e.count if e.count is not none else '?' }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <p class="muted">A component starts on the events it lists under <span class="mono">consumes</span>. Today agents also poll on a timer; event triggers arrive with Stage R6. Add an agent to a chain: add its component file by PR, then <a href="/deploy">deploy it</a>.</p>
+</section>

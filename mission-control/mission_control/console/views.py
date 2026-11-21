@@ -232,6 +232,25 @@ def problems(store: StateStore, at: datetime) -> list[Problem]:
             out.append(Problem("critical", "deployment.failed",
                                f"Last {d.get('last_action')} on {d.get('deployment')} failed",
                                str(d.get("error", ""))[:300], "/audit", d.get("updated_at", ""), d.get("deployment", "")))
+    for h in store.query("hosts"):
+        hid, a = h.get("host", ""), age_s(h.get("last_heartbeat"), at)
+        if h.get("state") == "removed":
+            continue
+        health = h.get("health") or {}
+        if h.get("last_heartbeat") and (a is None or a >= SILENT_S):
+            out.append(Problem("critical" if hid == "local" else "warning", "host.silent", f"Host {hid} is silent",
+                               f"last heartbeat {ago(h.get('last_heartbeat'), at)}", "/hosts",
+                               h.get("last_heartbeat", ""), hid))
+        elif h.get("state") == "unreachable":
+            out.append(Problem("warning", "host.unreachable", f"Host {hid} is unreachable",
+                               str(health.get("error", ""))[:300], "/hosts", h.get("last_heartbeat", "")[:13], hid))
+        if (health.get("disk_used_pct") or 0) >= HOST_DISK_WARN:
+            out.append(Problem("warning", "host.disk", f"Host {hid} disk {health['disk_used_pct']:.0f}% full",
+                               f"{health.get('disk_total_gb', '?')} GB disk", "/hosts",
+                               h.get("last_heartbeat", "")[:10], hid))
+        if h.get("last_ok") is False and h.get("last_action"):
+            out.append(Problem("critical", "host.failed", f"Last {h.get('last_action')} on host {hid} failed",
+                               str(h.get("error", ""))[:300], "/hosts", h.get("changed_at", ""), hid))
     for r in runs(store, at):
         last = r["chain"][-1] if r["chain"] else r       # only the latest attempt counts
         age = age_s(last.get("ended_at"), at)
@@ -289,3 +308,125 @@ def audit_filters(store: StateStore) -> dict:
     return {"who": sorted({r.get("who") for r in rows if r.get("who")}),
             "action": sorted({str(r.get("action", "")).split(".")[0] for r in rows if r.get("action")}),
             "status": sorted({r.get("status") for r in rows if r.get("status")})}
+
+
+# ---------------------------------------------------------------------- hosts, deploy, chains (UI-3)
+HOST_DISK_WARN = 85.0
+
+
+def hosts(store: StateStore, at: datetime, spec=None) -> list[dict]:
+    """Every host: from deploy/hosts.yaml and the hosts collection (heartbeats, console-created)."""
+    docs = {h.get("host"): h for h in store.query("hosts")}
+    ids = set(docs) | (set(spec.hosts) if spec else set())
+    deps = deployments(store, at)
+    out = []
+    for hid in sorted(ids, key=lambda h: (h != "local", h)):
+        doc = docs.get(hid) or {}
+        hs = spec.hosts.get(hid) if spec else None
+        a = age_s(doc.get("last_heartbeat"), at)
+        health = doc.get("health") or {}
+        out.append({"host": hid, "kind": doc.get("kind") or (hs.kind if hs else ""), "doc": doc,
+                    "state": doc.get("state") or "unknown", "health": health,
+                    "fresh": a is not None and a < SILENT_S, "ago": ago(doc.get("last_heartbeat"), at),
+                    "in_git": hs is not None, "desired": doc.get("desired") or {},
+                    "address": doc.get("address", ""),
+                    "deployments": [d for d in deps if (d.get("host") or str(d.get("deployment", "")).split("@")[-1]) == hid and d.get("state") != "removed"]})
+    return out
+
+
+def deploy(store: StateStore, at: datetime, spec) -> dict:
+    """Components and deployments: what runs (deployments collection) next to what git
+    asks for (deploy/deployments.yaml), with the last digests for upgrade and roll back."""
+    docs = {d.get("deployment"): d for d in deployments(store, at)}
+    ids = set(docs) | (set(spec.deployments) if spec else set())
+    rows = []
+    for did in sorted(ids):
+        doc = docs.get(did) or {"deployment": did, "state": "not deployed", "ago": ""}
+        if doc.get("state") == "removed" and not (spec and did in spec.deployments):
+            continue
+        git = spec.deployments.get(did) if spec else None
+        desired = doc.get("desired") or {}
+        differs = []
+        if git and desired:
+            if int(desired.get("replicas", git.replicas)) != git.replicas:
+                differs.append(f"replicas {desired.get('replicas')} (git {git.replicas})")
+            if list(desired.get("products") or []) != list(git.products):
+                differs.append(f"products {', '.join(desired.get('products') or [])} (git {', '.join(git.products)})")
+            if git.digest and desired.get("digest") != git.digest:
+                differs.append("digest differs from git's pin")
+        elif desired and not git:
+            differs.append("deployed from the console; not in deploy/deployments.yaml")
+        cur = doc.get("digest", "")
+        history = [h for h in doc.get("digests") or [] if h.get("digest") != cur]
+        rows.append({**doc, "id": did, "component": did.split("@")[0], "host": did.split("@")[1],
+                     "git": git, "desired": desired, "differs": differs, "rollback": history,
+                     "replicas": desired.get("replicas", git.replicas if git else len(doc.get("instances") or []))})
+    comps = []
+    if spec:
+        for c in sorted(spec.components.values(), key=lambda c: c.name):
+            comps.append({"name": c.name, "description": c.description, "llm": c.llm, "per_product": c.per_product,
+                          "image": c.image, "build": bool(c.build), "consumes": c.consumes, "emits": c.emits,
+                          "deployed": [r["id"] for r in rows if r["component"] == c.name and r.get("state") not in ("not deployed", "removed")]})
+    return {"deployments": rows, "components": comps}
+
+
+def day_start(at: datetime) -> str:
+    return at.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+
+def chains(store: StateStore, at: datetime, spec, count=None) -> dict:
+    """The chain graph from the component files, with today's (UTC) event counts per edge:
+    `starts` = events of that type stored today; `emits` = that component's instances' events."""
+    count = count or (lambda where: store.count("events", where=where))
+    since = day_start(at)
+    agent_ids = [a.get("agent_id", "") for a in store.query("agents")]
+    edges = []
+    if spec is None:
+        return {"edges": [], "graph": None, "since": since}
+    for frm, kind, to in spec.chains():
+        n = None
+        try:
+            if kind == "starts":
+                n = count([("type", "==", frm), ("received_at", ">=", since)])
+            elif kind == "emits":
+                ids = [a for a in agent_ids if a.startswith(f"{frm}-")]
+                n = sum(count([("type", "==", to), ("factoryengine", "==", a), ("received_at", ">=", since)]) for a in ids)
+        except Exception:
+            n = None
+        edges.append({"from": frm, "kind": kind, "to": to, "count": n})
+    return {"edges": edges, "graph": layout(spec, edges), "since": since}
+
+
+def layout(spec, edges: list[dict]) -> dict:
+    """Three columns for an SVG: trigger events → components → emitted events."""
+    comps = sorted(spec.components)
+    emitted = sorted({e["to"] for e in edges if e["kind"] == "emits"})
+    triggers = sorted({e["from"] for e in edges if e["kind"] == "starts"} - set(emitted))
+    col_x, row_h, top = (20, 330, 560), 46, 40
+    w_type, w_comp = 250, 170
+    nodes: dict[str, dict] = {}
+    for i, t in enumerate(triggers):
+        nodes["t:" + t] = {"x": col_x[0], "y": top + i * row_h, "w": w_type, "label": t.removeprefix("dev.factory."), "kind": "event"}
+    for i, t in enumerate(emitted):
+        nodes["t:" + t] = {"x": col_x[2], "y": top + i * row_h, "w": w_type, "label": t.removeprefix("dev.factory."), "kind": "event"}
+    rows = max(len(triggers), len(emitted), 1)
+    for i, c in enumerate(comps):
+        y = top + (rows - len(comps)) * row_h / 2 + i * row_h * 1.5
+        nodes["c:" + c] = {"x": col_x[1], "y": y, "w": w_comp, "label": c, "kind": "component"}
+    lines = []
+    for e in edges:
+        if e["kind"] == "starts":
+            a, b = nodes.get("t:" + e["from"]), nodes.get("c:" + e["to"])
+        elif e["kind"] == "emits":
+            a, b = nodes.get("c:" + e["from"]), nodes.get("t:" + e["to"])
+        else:
+            continue
+        if not a or not b:
+            continue
+        back = a["x"] > b["x"]                      # an emitted event that starts another component
+        x1, y1 = (a["x"] + a["w"], a["y"] + 14) if not back else (a["x"], a["y"] + 14)
+        x2, y2 = (b["x"], b["y"] + 14) if not back else (b["x"] + b["w"], b["y"] + 14)
+        lines.append({"x1": x1, "y1": y1, "x2": x2, "y2": y2, "mx": (x1 + x2) / 2, "my": (y1 + y2) / 2 - 4,
+                      "count": e["count"], "kind": e["kind"]})
+    height = top + max(rows, len(comps) * 1.5) * row_h + 10
+    return {"nodes": list(nodes.values()), "lines": lines, "width": col_x[2] + w_type + 20, "height": int(height)}

@@ -207,6 +207,32 @@ def resolve(spec: Spec, deployment_id: str, *, vars: dict[str, str] | None = Non
         ds = spec.deployments[deployment_id]
     except KeyError:
         raise KeyError(f"no deployment {deployment_id!r}; known: {', '.join(sorted(spec.deployments)) or 'none'}") from None
+    return resolve_entry(spec, ds, vars=vars, digest=digest)
+
+
+def check_entry(spec: Spec, ds: DeploymentSpec, *, hosts: set[str] | None = None,
+                product_names: set[str] | None = None) -> list[str]:
+    """Problems with one deployment that may not be in deployments.yaml (a console
+    deploy): the component exists, the host is known, the products fit."""
+    problems = []
+    c = spec.components.get(ds.component)
+    if c is None:
+        return [f"no component {ds.component!r} in deploy/components/"]
+    if ds.host not in (hosts if hosts is not None else set(spec.hosts)):
+        problems.append(f"no host {ds.host!r}")
+    if c.per_product and len(ds.products) != 1:
+        problems.append(f"{c.name} works on one product per deployment; choose exactly one")
+    if not c.per_product and ds.products:
+        problems.append(f"{c.name} is not per product; no products")
+    if product_names is not None:
+        problems += [f"no product {p!r} in products/" for p in ds.products if p not in product_names]
+    if not 0 <= ds.replicas <= 20:
+        problems.append("replicas must be 0..20")
+    return problems
+
+
+def resolve_entry(spec: Spec, ds: DeploymentSpec, *, vars: dict[str, str] | None = None,
+                  digest: str = "") -> Deployment:
     c = spec.components[ds.component]
     values = {"HOST": ds.host, **(vars or {})}
     env = {**c.env, **ds.env}
@@ -214,7 +240,7 @@ def resolve(spec: Spec, deployment_id: str, *, vars: dict[str, str] | None = Non
         env["FACTORY_PRODUCT"] = ds.products[0]
     missing = sorted({v for val in env.values() for v in PLACEHOLDER.findall(val) if v not in values})
     if missing:
-        raise SpecError([f"{deployment_id}: no value for {', '.join('${' + m + '}' for m in missing)} (pass --var)"])
+        raise SpecError([f"{ds.id}: no value for {', '.join('${' + m + '}' for m in missing)} (pass --var)"])
     env = {k: PLACEHOLDER.sub(lambda m: values[m.group(1)], v) for k, v in env.items()}
     return Deployment(component=c.name, host=ds.host, image=c.image, digest=digest or ds.digest,
                       command=c.command, env=env, llm=c.llm, replicas=ds.replicas, run_as=c.run_as,

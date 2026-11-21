@@ -5,6 +5,9 @@
     engines/{engine}        one per engine: last heartbeat, slots, halted/paused, pin
     agents/{agent_id}       one per agent instance (VM, pod, laptop): last heartbeat and state
     compliance/{product}__{pr}  the latest advisory compliance report of a PR
+    commands/{id}           one per operator command: who, why, steps, outcome
+    deployments/{id}        one per component@host: instances, desired state, last digests
+    hosts/{id}              one per host: health from heartbeats, desired state from host commands
 
 Every rule is order-independent and idempotent, because the bus delivers late and twice:
 - a terminal status always beats a non-terminal one; among non-terminal statuses the event
@@ -24,6 +27,8 @@ RUNS, NODES, ENGINES = "runs", "nodes", "engines"
 AGENTS, COMPLIANCE = "agents", "compliance"
 COMMANDS, DEPLOYMENTS = "commands", "deployments"
 PRODUCTS, PROBLEM_STATES = "products", "problem_states"
+HOSTS = "hosts"
+DIGEST_HISTORY = 5
 REPORT_FIELDS = ("product", "pr", "change", "head", "base", "title", "mode", "status", "rules",
                  "findings", "model", "effort", "cost_usd", "diff_truncated", "error")
 TERMINAL_RUN = {"completed", "failed", "cancelled", "abandoned", "lost"}
@@ -156,12 +161,16 @@ def _apply_command(doc: dict | None, ev: Event, kind: str) -> dict:
             d["refusal"] = data["refusal"]
         if d.get("status") in (None, "issued"):
             d["status"] = "running" if data.get("accepted") else "refused"
-    elif kind == "deployment.step":
+    elif kind in ("deployment.step", "host.step"):
         steps = dict(d.get("steps") or {})
         steps[f"{data['seq']:03d}"] = {"step": data.get("step"), "ok": data.get("ok"),
                                        "detail": data.get("detail", ""), "time": t}
         d["steps"] = steps
-    elif kind in ("deployment.changed", "command.completed"):
+    elif kind == "host.changed" and d.get("action", "").startswith("fleet."):
+        pass                                           # one host of a restore: the restore's own completion decides
+    elif kind == "deployment.changed" and d.get("action", "").startswith("fleet."):
+        pass
+    elif kind in ("deployment.changed", "command.completed", "host.changed"):
         d.update(finished_at=t, ok=data.get("ok"), status="succeeded" if data.get("ok") else "failed")
         if data.get("detail"):
             d["detail"] = data["detail"]
@@ -185,6 +194,49 @@ def _apply_deployment(doc: dict | None, ev: Event) -> dict:
             d[k] = data[k]
         elif k == "error":
             d.pop("error", None)
+    if removed:
+        d.pop("desired", None)
+    elif data.get("ok") and data.get("desired"):
+        d["desired"] = data["desired"]
+    if data.get("ok") and data.get("action") in ("deployment.apply", "fleet.restore") and data.get("digest"):
+        hist = [h for h in d.get("digests") or [] if h.get("digest") != data["digest"]]
+        d["digests"] = [{"digest": data["digest"], "at": ev["time"], "command_id": data.get("command_id", "")},
+                        *hist][:DIGEST_HISTORY]
+    return d
+
+
+def _apply_host(doc: dict | None, ev: Event, kind: str) -> dict:
+    """hosts/{id}: health from the newest heartbeat; desired state and state from host commands."""
+    d, data, t = dict(doc or {}), ev.get("data", {}), ev["time"]
+    d["host"] = data["host"]
+    if kind == "host.heartbeat":
+        if t < d.get("last_heartbeat", ""):
+            return d
+        health = {k: v for k, v in data.items() if k != "host"}
+        d.update(kind=data.get("kind", d.get("kind")), last_heartbeat=t, health=health)
+        if d.get("state") != "removed" or t > d.get("changed_at", ""):
+            d["state"] = data.get("state")
+        if data.get("address"):
+            d["address"] = data["address"]
+        return d
+    if (t, ev["id"]) < (d.get("changed_at", ""), d.get("changed_event", "")):
+        return d
+    d.update(last_action=data.get("action"), last_ok=data.get("ok"), last_command=data.get("command_id"),
+             changed_at=t, changed_event=ev["id"])
+    if data.get("kind"):
+        d["kind"] = data["kind"]
+    if data.get("address"):
+        d["address"] = data["address"]
+    if data.get("state"):
+        d["state"] = data["state"]
+    if data.get("state") == "removed":
+        d.pop("desired", None)
+    elif data.get("desired"):
+        d["desired"] = data["desired"]
+    if data.get("error"):
+        d["error"] = data["error"]
+    else:
+        d.pop("error", None)
     return d
 
 
@@ -295,10 +347,17 @@ def project(ev: Event, store: StateStore) -> list[str]:
             return d
         store.update(ENGINES, eng, apply)
         return [f"{ENGINES}/{eng}"]
+    if kind == "host.heartbeat" and (ev.get("data") or {}).get("host"):
+        hid = ev["data"]["host"]
+        store.update(HOSTS, hid, lambda doc: _apply_host(doc, ev, kind))
+        return [f"{HOSTS}/{hid}"]
     if kind in ("command.issued", "command.acknowledged", "deployment.step", "deployment.changed",
-                "command.completed"):
+                "command.completed", "host.step", "host.changed"):
         data = ev.get("data") or {}
         touched = []
+        if kind == "host.changed" and data.get("host"):
+            store.update(HOSTS, data["host"], lambda doc: _apply_host(doc, ev, kind))
+            touched.append(f"{HOSTS}/{data['host']}")
         if data.get("command_id"):
             store.update(COMMANDS, data["command_id"], lambda doc: _apply_command(doc, ev, kind))
             touched.append(f"{COMMANDS}/{data['command_id']}")

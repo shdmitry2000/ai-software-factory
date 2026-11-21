@@ -83,6 +83,8 @@ Description=Mission control command handler: factory-commands -> deploys on this
 After=network-online.target docker.service
 Wants=network-online.target
 [Service]
+RuntimeDirectory=mission-control-handler
+RuntimeDirectoryMode=0700
 Environment=MC_SCHEMA_DIR=$SRC/mission-control/schema
 Environment=GRPC_VERBOSITY=ERROR
 ExecStart=$VENV/bin/python -m mission_control.handler --project $PROJECT --engine $ENGINE serve --repo $SRC --app-dir $HOME/$PRODUCT

@@ -10,7 +10,7 @@ travel as plain dicts so no adapter forces a CloudEvents library on the others.
 """
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
@@ -62,6 +62,9 @@ class StateStore(Protocol):
     def query(self, collection: str, *, where: Iterable[tuple[str, str, Any]] = (),
               order_by: str = "", descending: bool = False, limit: int = 0) -> list[Doc]:
         """Filter with (field, op, value), op in ==, !=, <, <=, >, >=, in."""
+
+    def count(self, collection: str, *, where: Iterable[tuple[str, str, Any]] = ()) -> int:
+        """How many documents match, without reading them."""
 
     def delete(self, collection: str, doc_id: str) -> None: ...
 
@@ -318,6 +321,15 @@ class AgentRuntime(Protocol):
 
     def logs(self, deployment_id: str, *, tail: int = 200) -> list[str]:
         """Last `tail` lines of every replica. Unknown deployment: KeyError."""
+
+    def follow_logs(self, deployment_id: str, *, tail: int = 200) -> Iterator[str]:
+        """The last `tail` lines, then new lines as they come, until the caller closes
+        the iterator. Known credential values are masked. Unknown deployment: KeyError."""
+
+    def health(self, host_id: str) -> dict:
+        """One host's health: state (healthy | unreachable | degraded), docker, cpus,
+        load1, mem_total_mb, mem_used_pct, disk_total_gb, disk_used_pct, containers,
+        error. Never raises for an unreachable host; unknown host: KeyError."""
 
 
 PORTS: dict[str, type] = {

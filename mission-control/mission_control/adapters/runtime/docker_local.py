@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import subprocess
+import threading
 from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
@@ -26,7 +28,7 @@ from pathlib import Path
 from mission_control.ports import Deployment, Host, Instance, Step
 from mission_control.registry import register
 
-from . import credential_lines, from_json, parse_env_file, spec_hash, to_json, validate
+from . import credential_lines, from_json, host_facts, mask, parse_env_file, spec_hash, to_json, validate
 
 L = "dev.factory."
 SECRET_MOUNT = "/run/factory/llm.env"
@@ -235,13 +237,66 @@ class DockerLocal:
 
     def logs(self, deployment_id: str, *, tail: int = 200) -> list[str]:
         found = self._require(deployment_id)
+        secrets = self._login_values()
         lines: list[str] = []
         for c in found:
             name = c["Name"].lstrip("/")
             text = self._run("logs", "--tail", str(tail), name, merge=True, check=False)
             prefix = f"[{name}] " if len(found) > 1 else ""
-            lines += [prefix + line for line in text.splitlines()]
+            lines += [mask(prefix + line, secrets) for line in text.splitlines()]
         return lines[-tail:] if tail else lines
+
+    def follow_logs(self, deployment_id: str, *, tail: int = 200) -> Iterator[str]:
+        """`docker logs -f` per replica, merged; the processes end when the caller closes."""
+        found = self._require(deployment_id)
+        secrets = self._login_values()
+        q: queue.Queue = queue.Queue(maxsize=5000)
+        procs = []
+        per = max(1, tail // len(found)) if tail else 0
+
+        def pump(p: subprocess.Popen, prefix: str) -> None:
+            for line in p.stdout:
+                q.put(prefix + line.rstrip("\n"))
+            q.put(None)
+
+        try:
+            for c in found:
+                name = c["Name"].lstrip("/")
+                p = subprocess.Popen([self.docker, "logs", "-f", "--tail", str(per), name], text=True,
+                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=1)
+                procs.append(p)
+                threading.Thread(target=pump, args=(p, f"[{name}] " if len(found) > 1 else ""), daemon=True).start()
+            open_ = len(procs)
+            while open_:
+                line = q.get()
+                if line is None:
+                    open_ -= 1
+                    continue
+                yield mask(line, secrets)
+        finally:
+            for p in procs:
+                if p.poll() is None:
+                    p.terminate()
+
+    def _login_values(self) -> dict[str, str]:
+        try:
+            return self._read_login()
+        except OSError:
+            return {}
+
+    def health(self, host_id: str) -> dict:
+        self._check_host(host_id)
+        h = self.hosts()[0]
+        out = {"state": h.state, **host_facts()}
+        if h.state == "healthy":
+            out["docker"] = h.labels.get("docker", "")
+            try:
+                out["containers"] = len(self._run("ps", "-q", "--filter", f"label={L}managed=1").split())
+            except DockerError:
+                pass
+        else:
+            out["error"] = "docker not reachable"
+        return out
 
     # ------------------------------------------------------------------ helpers
     def _check_host(self, host_id: str) -> None:

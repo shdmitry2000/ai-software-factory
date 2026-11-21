@@ -118,7 +118,8 @@ def test_unknown_product_refused(h, store):
 def test_newer_file_seed_beats_older_console_override(store):
     def ev(kind, eid, t, data):
         return {"type": f"dev.factory.{kind}", "id": eid, "time": t, "data": data}
-    seed = lambda h, base: {"product": P, "seed": {"base_branch": base}, "seed_hash": "sha256:" + h * 64}
+    def seed(h, base):
+        return {"product": P, "seed": {"base_branch": base}, "seed_hash": "sha256:" + h * 64}
     projections.project(ev("product.updated", "u1", "2026-11-21T10:00:00Z",
                            {"product": P, "field": "base_branch", "old": "main", "new": "dev"}), store)
     projections.project(ev("product.registered", "r1", "2026-11-21T09:00:00Z", seed("a", "main")), store)

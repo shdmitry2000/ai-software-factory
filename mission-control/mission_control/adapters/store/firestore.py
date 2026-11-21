@@ -94,6 +94,19 @@ class FirestoreStore:
             docs = sorted((d for d in docs if order_by in d), key=lambda d: d[order_by], reverse=descending)
         return docs[:limit] if limit else docs
 
+    def count(self, collection: str, *, where: Iterable[tuple[str, str, Any]] = ()) -> int:
+        """Server-side count (an aggregation: about one read per 1000 matches). Equality
+        plus a range on another field needs a composite index (infra/setup.sh)."""
+        q = self._col(collection)
+        for field, op, value in where:
+            q = q.where(filter=FieldFilter(field, _OPS[op], value))
+        try:
+            return int(q.count().get()[0][0].value)
+        except gexc.FailedPrecondition:
+            log.warning("no composite index to count %s where %s; counting documents", collection,
+                        [f for f, _, _ in where])
+            return sum(1 for _ in q.stream())
+
     def delete(self, collection: str, doc_id: str) -> None:
         self._col(collection).document(_enc(doc_id)).delete()
 

@@ -88,7 +88,7 @@ def test_projections_do_not_depend_on_arrival_order(h):
     ("deployment.restart", "compliance", {}, "deployment id"),
     ("deployment.scale", "compliance@local", {}, "args.replicas"),
     ("deployment.scale", "compliance@local", {"replicas": 99}, "args.replicas"),
-    ("deployment.apply", "ghost@local", {}, "not in deploy/deployments.yaml"),
+    ("deployment.apply", "ghost@local", {}, "no component"),
 ])
 def test_refusals_are_acknowledged_with_the_reason(h, action, target, args, why):
     cmd = command(action, target, **args)
@@ -152,4 +152,6 @@ def test_serve_pulls_from_the_commands_subscription():
     calls = iter([False, True])
     h.serve("handler", timeout_s=0.1, stop=lambda: next(calls))
     got = [d.event["type"] for d in bus.pull("writer", max_messages=50, timeout_s=0.1)]
+    assert got[0] == "dev.factory.host.heartbeat"            # hosts report first, then every minute
+    got = got[1:]
     assert got[0].endswith("command.issued") and got[-1].endswith("deployment.changed")

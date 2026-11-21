@@ -24,12 +24,20 @@ from mission_control.console.peercred import PeerCredH11
 def _seed(store) -> None:
     """Example rows for a local run, clearly marked as demo data on the page."""
     now = datetime.now(timezone.utc)
-    t = lambda s: (now - timedelta(seconds=s)).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    def t(s):
+        return (now - timedelta(seconds=s)).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
     store.upsert("engines", "factory-1", {"engine": "factory-1", "last_heartbeat": t(20), "halted": False})
     store.upsert("agents", "compliance-1-local", {"agent_id": "compliance-1-local", "state": "idle",
                  "model": "claude-haiku-5-5", "last_heartbeat": t(35)})
     store.upsert("deployments", "compliance@local", {"deployment": "compliance@local", "state": "running",
                  "digest": "sha256:d566817f18438c724c5f", "last_action": "deployment.apply", "last_ok": True})
+    store.upsert("hosts", "local", {"host": "local", "kind": "local", "state": "healthy", "last_heartbeat": t(25),
+                 "health": {"state": "healthy", "docker": "27.5.1", "cpus": 4, "load1": 0.31, "mem_total_mb": 16008,
+                            "mem_used_pct": 41.2, "disk_total_gb": 48.4, "disk_used_pct": 62.0, "containers": 1}})
+    store.update("deployments", "compliance@local", lambda d: {**d, "desired": {"component": "compliance", "host": "local",
+                 "replicas": 1, "digest": "sha256:" + "d5" * 32, "products": ["file-to-markdown-convertor"]},
+                 "digests": [{"digest": "sha256:" + "d5" * 32, "at": t(400)}, {"digest": "sha256:" + "a8" * 32, "at": t(90000)}],
+                 "digest": "sha256:" + "d5" * 32})
     store.upsert("commands", "demo-1", {"command_id": "demo-1", "action": "deployment.restart",
                  "target": "compliance@local", "who": "demo", "reason": "example", "status": "succeeded",
                  "issued_at": t(300)})

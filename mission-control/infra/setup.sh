@@ -62,4 +62,14 @@ say "Artifact Registry"
 gcloud artifacts repositories describe mission-control --location $REGION $G >/dev/null 2>&1 ||
   gcloud artifacts repositories create mission-control --repository-format docker --location $REGION $G
 
+say "Firestore indexes (console counts: Chains edges per day)"
+# Each create returns at once (--async); "already exists" is success.
+index() {
+  out=$(gcloud firestore indexes composite create --collection-group=events --async "$@" $G 2>&1) || {
+    grep -qi "already exists" <<<"$out" || { echo "$out" >&2; exit 1; }; }
+}
+index --field-config field-path=type,order=ascending --field-config field-path=received_at,order=ascending
+index --field-config field-path=type,order=ascending --field-config field-path=factoryengine,order=ascending \
+      --field-config field-path=received_at,order=ascending
+
 say "done"
