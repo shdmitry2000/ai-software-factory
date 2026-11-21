@@ -43,7 +43,10 @@ class PubSubBus:
     def publish(self, topic: str, event: Event, *, ordering_key: str = "") -> str:
         path = self._topic(topic)
         body = json.dumps(event, separators=(",", ":"), ensure_ascii=False).encode()
-        future = self._pub.publish(path, body, ordering_key=ordering_key, **{"content-type": CONTENT_TYPE})
+        attrs = {"content-type": CONTENT_TYPE, "type": str(event.get("type", ""))}
+        if event.get("factoryproduct"):        # trigger subscriptions filter on these (mission_control.triggers)
+            attrs["product"] = str(event["factoryproduct"])
+        future = self._pub.publish(path, body, ordering_key=ordering_key, **attrs)
         try:
             return future.result(timeout=30)
         except Exception:

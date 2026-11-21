@@ -544,6 +544,17 @@
         },
         "stopped_reason": {
           "type": "string"
+        },
+        "trigger": {
+          "type": "string",
+          "description": "subscription the agent starts from (event-triggered); absent: timer only"
+        },
+        "triggered_today": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "last_trigger_at": {
+          "type": "string"
         }
       },
       "additionalProperties": false
@@ -912,6 +923,31 @@
                 "type": "string"
               },
               "maxItems": 10
+            }
+          }
+        },
+        "trigger": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "subscription",
+            "types"
+          ],
+          "description": "R6: the filtered subscription that starts this deployment's agents",
+          "properties": {
+            "subscription": {
+              "type": "string",
+              "pattern": "^factory-trig-[a-z0-9-]+$"
+            },
+            "types": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string"
+              }
+            },
+            "product": {
+              "type": "string"
             }
           }
         }

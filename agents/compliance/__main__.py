@@ -7,7 +7,7 @@
     python -m agents.compliance --bus pubsub --store firestore --interval 600
 
 Settings come from flags or env: GCP_PROJECT, MC_TOPIC, AGENT_ID, AGENT_LOCATION,
-COMPLIANCE_MODEL, FACTORY_PRODUCT. FACTORY_ENV_FILE names the mounted LLM credential.
+COMPLIANCE_MODEL, FACTORY_PRODUCT, MC_TRIGGER_SUBSCRIPTION. FACTORY_ENV_FILE names the mounted LLM credential.
 """
 from __future__ import annotations
 
@@ -77,6 +77,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--model", default=os.environ.get("COMPLIANCE_MODEL", "claude-haiku-5-5"))
     ap.add_argument("--interval", type=float, default=600.0, help="seconds between polls")
     ap.add_argument("--once", action="store_true")
+    ap.add_argument("--trigger", default=os.environ.get("MC_TRIGGER_SUBSCRIPTION", ""),
+                    help="subscription whose events start a tick at once (set by the handler from `consumes`)")
     ap.add_argument("--print", action="store_true", help="print every published event")
     a = ap.parse_args(argv)
     load_env_file(os.environ.get("FACTORY_ENV_FILE", ""))
@@ -97,24 +99,53 @@ def main(argv: list[str] | None = None) -> int:
         reviewer=ClaudeReviewer(model=a.model) if a.reviewer == "claude" else FakeReviewer(),
         bus=bus, store=store, topic=a.topic)
 
+    trigger = a.trigger if hasattr(bus, "pull") else ""
+    agent.trigger = trigger
+    return serve(agent, bus, interval=a.interval, trigger=trigger, once=a.once)
+
+
+def serve(agent, bus, *, interval: float, trigger: str = "", once: bool = False, max_ticks: int = 0,
+          beat_s: float = 60.0, pull_timeout_s: float = 5.0) -> int:
+    """Tick now, then again after `interval` seconds, or as soon as an event arrives on the
+    trigger subscription (R6: pullrequest.opened/updated for this product). Every event
+    received is acknowledged first; several at once make one tick (a tick reviews every
+    open PR head it has not reviewed yet, so nothing is lost if one was missed)."""
     agent.heartbeat("starting")
-    next_beat = 0.0
+    next_beat, ticks = 0.0, 0
     while True:
         try:
+            agent.heartbeat("busy")
             reports = agent.tick()
             print(f"tick: {len(reports)} report(s), spent today ${agent.spent_usd:.4f}", file=sys.stderr, flush=True)
         except Exception as e:                      # keep running; the heartbeat shows it's alive
             print(f"tick failed: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
-        if a.once:
+        next_beat, ticks = 0.0, ticks + 1
+        if once:
             agent.heartbeat("stopped", stopped_reason="--once")
             return 0
-        deadline = time.monotonic() + a.interval
+        if max_ticks and ticks >= max_ticks:
+            return 0
+        deadline = time.monotonic() + interval
         while time.monotonic() < deadline:
             if time.monotonic() >= next_beat:
                 agent.heartbeat("idle")
-                next_beat = time.monotonic() + 60
-            time.sleep(min(5.0, max(0.0, deadline - time.monotonic())))
-
+                next_beat = time.monotonic() + beat_s
+            if trigger:
+                try:
+                    got = bus.pull(trigger, max_messages=10, timeout_s=pull_timeout_s)
+                except Exception as e:              # the timer still runs
+                    print(f"trigger pull failed: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+                    time.sleep(min(pull_timeout_s, max(0.0, deadline - time.monotonic())))
+                    continue
+                for dl in got:
+                    dl.ack()
+                if got:
+                    agent.triggered(got[-1].event)
+                    print(f"triggered by {len(got)} event(s): {got[-1].event.get('type')} {got[-1].event.get('subject')}",
+                          file=sys.stderr, flush=True)
+                    break
+            else:
+                time.sleep(min(5.0, max(0.0, deadline - time.monotonic())))
 
 if __name__ == "__main__":
     sys.exit(main())

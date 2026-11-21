@@ -16,7 +16,7 @@
     <text x="{{ n.x + n.w / 2 }}" y="{{ n.y + 18 }}" text-anchor="middle" class="label {{ n.kind }}">{{ n.label }}</text>
     {% endfor %}
   </svg>
-  <figcaption class="muted">Rounded boxes are event types, square boxes are components. A number on an arrow is how many of those events were stored today; for “emits” only this component's own instances count.</figcaption>
+  <figcaption class="muted">Rounded boxes are event types, square boxes are components. A number on an arrow is how many of those events were stored today; for “emits” only this component's own instances count. A solid green arrow is a wired trigger; a dashed one runs on the agent's timer only.</figcaption>
   </figure>
   </div>
   {% else %}<p class="muted">No components.</p>{% endif %}
@@ -24,8 +24,16 @@
 <section class="card">
   <h2>Edges</h2>
   <div class="scroll"><table class="compact">
-    <thead><tr><th>From</th><th></th><th>To</th><th>Today</th></tr></thead>
-    <tbody>{% for e in edges %}<tr><td class="mono">{{ e.from|replace('dev.factory.', '') }}</td><td class="muted">{{ e.kind }}</td><td class="mono">{{ e.to|replace('dev.factory.', '') }}</td><td>{{ e.count if e.count is not none else '?' }}</td></tr>{% endfor %}</tbody>
+    <thead><tr><th>From</th><th></th><th>To</th><th>Today</th><th>Trigger</th></tr></thead>
+    <tbody>{% for e in edges %}<tr><td class="mono">{{ e.from|replace('dev.factory.', '') }}</td><td class="muted">{{ e.kind }}</td><td class="mono">{{ e.to|replace('dev.factory.', '') }}</td><td>{{ e.count if e.count is not none else '?' }}</td>
+      <td>{% if e.kind == 'starts' %}{% if e.wired %}<span class="chip good">wired</span>{% else %}<span class="chip warn" title="no deployment of {{ e.to }} has a trigger subscription; it runs on its timer">timer only</span>{% endif %}{% endif %}</td></tr>{% endfor %}</tbody>
   </table></div>
-  <p class="muted">A component starts on the events it lists under <span class="mono">consumes</span>. Today agents also poll on a timer; event triggers arrive with Stage R6. Add an agent to a chain: add its component file by PR, then <a href="/deploy">deploy it</a>.</p>
+  {% if wired %}
+  <h3>Trigger subscriptions</h3>
+  <div class="scroll"><table class="compact">
+    <thead><tr><th>Deployment</th><th>Subscription</th><th>Events</th><th>Product</th><th>Last triggered</th></tr></thead>
+    <tbody>{% for c, ws in wired.items() %}{% for w in ws %}<tr><td class="mono">{{ w.deployment }}</td><td class="mono">{{ w.subscription }}</td><td class="mono">{{ w.types|join(', ')|replace('dev.factory.', '') }}</td><td>{{ w.product or 'all' }}</td><td class="nowrap">{{ last_trigger.get(c, 'not yet') }}</td></tr>{% endfor %}{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+  <p class="muted">A component starts on the events it lists under <span class="mono">consumes</span>: deploying it creates a filtered subscription, and its agents act within seconds of such an event. The timer stays as a safety net. Add an agent to a chain: add its component file by PR, then <a href="/deploy">deploy it</a>.</p>
 </section>

@@ -108,7 +108,7 @@ Vertex AI is a possible later option per agent.
 | **Command handler** (`mission_control/handler.py`, systemd `mission-control-handler`) | factory-1 | executes commands from `factory-commands` one at a time: deployments, product settings, halt/unhalt, problem ack/resolve. Publishes acknowledged, each step and the outcome | running (R4, UI-2) |
 | **Agent hosts** | factory-1 (`local`) and sandbox VMs `agent-*` (`vm`) running Docker | run agents and, later, other system parts | factory-1 running; VM hosts created, used and removed from the console (R5) |
 | **AgentRuntime** (in the command handler) | factory-1 | install hosts; deploy, start, stop, upgrade, roll back, scale, logs; restore after the sweep | running: `fleet` = `docker-local` + `docker-ssh` per VM + `gce.py` ([deploy-and-hosts-plan.md](deploy-and-hosts-plan.md)) |
-| **Compliance agent** | container (`agents/compliance`, image `mission-control/agent`) | advisory review of every open PR head against versioned rules | built; first deploy on factory-1 (R2) |
+| **Compliance agent** | container (`agents/compliance`, image `mission-control/agent`) | advisory review of every open PR head against versioned rules; starts on `pullrequest.opened/updated` from its trigger subscription `factory-trig-compliance--{host}` (R6), with a 10-min timer as the safety net | running on factory-1 |
 | GKE cluster `factory-agents` | – | parked 2026-11-21; scripts kept in `bin/gke/`, not rebuilt after the sweep | parked |
 | **Prompt manager** | git `prompts/` now; MLflow later | versioned, labelled prompts (compliance rules first) | built (file adapter) / planned (service) |
 | **Skill manager** | git plugin marketplace | versioned skills and subagents materialized per lap | planned (Stage T) |

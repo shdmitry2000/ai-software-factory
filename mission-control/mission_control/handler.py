@@ -36,6 +36,7 @@ from pathlib import Path
 
 from mission_control import deployspec, events
 from mission_control import products as products_mod
+from mission_control import triggers as triggers_mod
 from mission_control.ports import AgentRuntime, Event, EventBus, PromptRegistry, StateStore, Step
 
 log = logging.getLogger("mission_control.handler")
@@ -88,6 +89,7 @@ class CommandHandler:
     app_dir: Path | None = None
     consumer: Callable[[Path, str], tuple[bool, str]] = run_consumer
     max_vm_hosts: int = 3
+    triggers: object | None = None                  # mission_control.triggers (R6); None = timer only
     _seen: set[str] = field(default_factory=set)
 
     # ---------------------------------------------------------------- events
@@ -297,6 +299,9 @@ class CommandHandler:
                 on_host = [d["deployment"] for d in (self.store.query("deployments") if self.store else [])
                            if str(d.get("deployment", "")).endswith(f"@{target}") and d.get("state") != "removed"]
                 ok, err = steps(self.runtime.remove_host(target), target)
+                if ok and self.triggers is not None:
+                    for dep in on_host:
+                        steps(self.triggers.remove(triggers_mod.subscription_name(dep)), target)
                 if ok:
                     for dep in on_host:
                         out.append(self._publish("dev.factory.deployment.changed", f"deployment-changed:{cid}:{dep}",
@@ -437,6 +442,19 @@ class CommandHandler:
                     return
                 dep = replace(dep, digest=digest)
             extra.update(digest=dep.digest, image=dep.image)
+            if self.triggers is not None:
+                name = triggers_mod.subscription_name(dep.id)
+                if c.consumes:
+                    t = triggers_mod.trigger_for(dep.id, c.consumes, ds.products[0] if c.per_product else "")
+                    for st in self.triggers.ensure(t, dep.host):
+                        yield st
+                        if not st.ok:
+                            return
+                    dep = replace(dep, env={**dep.env, "MC_TRIGGER_SUBSCRIPTION": t.subscription})
+                    extra["trigger"] = {"subscription": t.subscription, "types": list(t.types),
+                                        **({"product": t.product} if t.product else {})}
+                else:                                   # consumes removed since the last apply
+                    yield from self.triggers.remove(name)
             steps_ok = True
             for st in self.runtime.apply(dep):
                 steps_ok &= st.ok
@@ -452,7 +470,12 @@ class CommandHandler:
             if ok and stored:
                 extra["desired"] = {**stored, "replicas": args["replicas"]}
         else:
-            yield from getattr(self.runtime, action.split(".", 1)[1])(target)
+            ok = True
+            for st in getattr(self.runtime, action.split(".", 1)[1])(target):
+                ok &= st.ok
+                yield st
+            if action == "deployment.remove" and ok and self.triggers is not None:
+                yield from self.triggers.remove(triggers_mod.subscription_name(target))
 
     # ---------------------------------------------------------------- products, engine, problems
     def _product_file(self, name: str) -> products_mod.Product | None:
@@ -755,7 +778,8 @@ def main(argv: list[str] | None = None) -> int:
                            vars={"PROJECT": o.project}, builder=DockerBuilder(repo), store=store,
                            products_dir=repo / "products",
                            prompts=registry.get("prompts", "files")(root=str(repo / "prompts")),
-                           app_dir=Path(o.app_dir) if o.app_dir else None)
+                           app_dir=Path(o.app_dir) if o.app_dir else None,
+                           triggers=triggers_mod.PubSubTriggers(o.project, topic=o.events_topic))
         if o.logs_socket:
             h.logs_server(o.logs_socket)
         h.serve(o.subscription)

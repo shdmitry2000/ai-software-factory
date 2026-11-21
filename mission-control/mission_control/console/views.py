@@ -483,10 +483,16 @@ def chains(store: StateStore, at: datetime, spec, count=None) -> dict:
     `starts` = events of that type stored today; `emits` = that component's instances' events."""
     count = count or (lambda where: store.count("events", where=where))
     since = day_start(at)
-    agent_ids = [a.get("agent_id", "") for a in store.query("agents")]
+    agents_ = store.query("agents")
+    agent_ids = [a.get("agent_id", "") for a in agents_]
+    wired: dict[str, list[dict]] = {}               # component → its deployments' triggers (R6)
+    for d in store.query("deployments"):
+        if d.get("trigger") and d.get("state") != "removed":
+            wired.setdefault(str(d.get("deployment", "")).split("@")[0], []).append(
+                {"deployment": d.get("deployment"), **d["trigger"]})
     edges = []
     if spec is None:
-        return {"edges": [], "graph": None, "since": since}
+        return {"edges": [], "graph": None, "since": since, "wired": wired}
     for frm, kind, to in spec.chains():
         n = None
         try:
@@ -497,8 +503,15 @@ def chains(store: StateStore, at: datetime, spec, count=None) -> dict:
                 n = sum(count([("type", "==", to), ("factoryengine", "==", a), ("received_at", ">=", since)]) for a in ids)
         except Exception:
             n = None
-        edges.append({"from": frm, "kind": kind, "to": to, "count": n})
-    return {"edges": edges, "graph": layout(spec, edges), "since": since}
+        live = kind == "starts" and any(frm in w["types"] or any(x.endswith(".*") and frm.startswith(x[:-1])
+                                                                   for x in w["types"]) for w in wired.get(to, []))
+        edges.append({"from": frm, "kind": kind, "to": to, "count": n, "wired": live})
+    last = {}
+    for c in spec.components:
+        ts = [a["last_trigger_at"] for a in agents_ if a.get("last_trigger_at") and str(a.get("agent_id", "")).startswith(f"{c}-")]
+        if ts:
+            last[c] = ago(max(ts), at)
+    return {"edges": edges, "graph": layout(spec, edges), "since": since, "wired": wired, "last_trigger": last}
 
 
 def layout(spec, edges: list[dict]) -> dict:
@@ -531,6 +544,6 @@ def layout(spec, edges: list[dict]) -> dict:
         x1, y1 = (a["x"] + a["w"], a["y"] + 14) if not back else (a["x"], a["y"] + 14)
         x2, y2 = (b["x"], b["y"] + 14) if not back else (b["x"] + b["w"], b["y"] + 14)
         lines.append({"x1": x1, "y1": y1, "x2": x2, "y2": y2, "mx": (x1 + x2) / 2, "my": (y1 + y2) / 2 - 4,
-                      "count": e["count"], "kind": e["kind"]})
+                      "count": e["count"], "kind": e["kind"] + (" wired" if e.get("wired") else "")})
     height = top + max(rows, len(comps) * 1.5) * row_h + 10
     return {"nodes": list(nodes.values()), "lines": lines, "width": col_x[2] + w_type + 20, "height": int(height)}

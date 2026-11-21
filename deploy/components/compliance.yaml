@@ -16,7 +16,7 @@ env:
   MC_TOPIC: factory-events
   COMPLIANCE_MODEL: claude-haiku-5-5
 per_product: true                     # one product per deployment (FACTORY_PRODUCT)
-consumes:                             # chain triggers (R6 wires them; today it polls every 10 min)
+consumes:                             # chain triggers (R6): a filtered subscription per deployment; the 10-min timer stays as a safety net
   - type: dev.factory.pullrequest.opened
   - type: dev.factory.pullrequest.updated
 emits:

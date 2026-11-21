@@ -201,8 +201,14 @@ def _apply_deployment(doc: dict | None, ev: Event) -> dict:
             d.pop("error", None)
     if removed:
         d.pop("desired", None)
+        d.pop("trigger", None)
     elif data.get("ok") and data.get("desired"):
         d["desired"] = data["desired"]
+    if data.get("ok") and data.get("action") in ("deployment.apply", "fleet.restore"):
+        if data.get("trigger"):
+            d["trigger"] = data["trigger"]
+        elif data.get("desired"):                       # applied without consumes: no trigger any more
+            d.pop("trigger", None)
     if data.get("ok") and data.get("action") in ("deployment.apply", "fleet.restore") and data.get("digest"):
         hist = [h for h in d.get("digests") or [] if h.get("digest") != data["digest"]]
         d["digests"] = [{"digest": data["digest"], "at": ev["time"], "command_id": data.get("command_id", "")},

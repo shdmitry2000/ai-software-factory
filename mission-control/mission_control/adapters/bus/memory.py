@@ -29,6 +29,7 @@ class _Msg:
 class _Sub:
     queue: deque = field(default_factory=deque)
     leased: dict = field(default_factory=dict)   # mid → _Msg
+    accept: object = None                        # filter (like a Pub/Sub filter): event → bool
 
 
 class MemoryBus:
@@ -38,9 +39,9 @@ class MemoryBus:
         self._ids = itertools.count(1)
         self._cv = threading.Condition()
 
-    def create_subscription(self, subscription: str, topic: str) -> None:
+    def create_subscription(self, subscription: str, topic: str, *, accept=None) -> None:
         with self._cv:
-            self._subs.setdefault(subscription, _Sub())
+            self._subs.setdefault(subscription, _Sub(accept=accept))
             if subscription not in self._topics.setdefault(topic, []):
                 self._topics[topic].append(subscription)
 
@@ -48,9 +49,19 @@ class MemoryBus:
         with self._cv:
             mid = str(next(self._ids))
             for name in self._topics.get(topic, []):
-                self._subs[name].queue.append(_Msg(mid, copy.deepcopy(event), ordering_key))
+                sub = self._subs[name]
+                if sub.accept is not None and not sub.accept(event):
+                    continue
+                sub.queue.append(_Msg(mid, copy.deepcopy(event), ordering_key))
             self._cv.notify_all()
             return mid
+
+    def delete_subscription(self, subscription: str) -> None:
+        with self._cv:
+            self._subs.pop(subscription, None)
+            for subs in self._topics.values():
+                if subscription in subs:
+                    subs.remove(subscription)
 
     def pull(self, subscription: str, *, max_messages: int = 10, timeout_s: float = 5.0) -> list[Delivery]:
         with self._cv:

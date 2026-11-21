@@ -51,6 +51,15 @@ class ComplianceAgent:
     reports: int = 0
     day: str = ""
     _done: dict[str, tuple[str, str]] = field(default_factory=dict)   # key → (head, rules hash)
+    trigger: str = ""                 # subscription that starts ticks (R6); "" = timer only
+    triggered_today: int = 0
+    last_trigger_at: str = ""
+
+    def triggered(self, ev: Event) -> None:
+        """An event arrived on the trigger subscription (counted in the heartbeat)."""
+        self._roll_day()
+        self.triggered_today += 1
+        self.last_trigger_at = self.clock()
 
     # ---------------------------------------------------------------- events
     def _event(self, etype: str, eid: str, subject: str, data: dict, **ext: str) -> Event:
@@ -66,6 +75,10 @@ class ComplianceAgent:
                 "reports_today": self.reports}
         if stopped_reason:
             data["stopped_reason"] = stopped_reason
+        if self.trigger:
+            data.update(trigger=self.trigger, triggered_today=self.triggered_today)
+            if self.last_trigger_at:
+                data["last_trigger_at"] = self.last_trigger_at
         t = self.clock()
         ev = self._event("dev.factory.agent.heartbeat", f"agent:{self.me.agent_id}:{t}",
                          f"agent/{self.me.agent_id}", data)
@@ -76,7 +89,7 @@ class ComplianceAgent:
     def _roll_day(self) -> None:
         today = self.clock()[:10]
         if today != self.day:
-            self.day, self.spent_usd, self.reports = today, 0.0, 0
+            self.day, self.spent_usd, self.reports, self.triggered_today = today, 0.0, 0, 0
 
     def _already(self, key: str, head: str, rules_hash: str) -> bool:
         if self._done.get(key) == (head, rules_hash):

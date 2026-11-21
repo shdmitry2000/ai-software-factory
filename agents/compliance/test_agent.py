@@ -126,3 +126,32 @@ def test_findings_must_name_a_real_rule():
     got = parse_findings('```json\n{"findings":[{"rule":"C-001","severity":"weird","title":"t"},'
                          '{"rule":"X-9","severity":"high","title":"made up"}]}\n```', rules)
     assert got == [{"rule": "C-001", "severity": "high", "title": "t"}]
+
+
+def test_an_event_on_the_trigger_starts_a_tick_at_once(world):
+    """R6: with a trigger subscription the agent ticks on the event, not after its interval."""
+    import time
+
+    from agents.compliance.__main__ import serve
+    from mission_control.triggers import MemoryTriggers, trigger_for
+    agent, prompts, reviewer, host, store = world
+    bus = agent.bus
+    t = trigger_for("compliance@local", ("dev.factory.pullrequest.opened",), "file-to-markdown-convertor")
+    list(MemoryTriggers(bus).ensure(t, "local"))
+    agent.trigger = t.subscription
+    host.heads[9] = "c" * 40
+    pr = {"specversion": "1.0", "id": "github:pr-opened:x#9", "source": "factory://f/git-poller",
+          "type": "dev.factory.pullrequest.opened", "subject": "change/x", "time": "2026-11-17T12:00:00Z",
+          "datacontenttype": "application/json", "factoryengine": "f", "factoryproduct": "file-to-markdown-convertor",
+          "data": {}}
+    bus.publish("factory-events", pr)
+    ticks = []
+    real_tick = agent.tick
+    agent.tick = lambda: ticks.append(1) or real_tick()
+    start = time.monotonic()
+    assert serve(agent, bus, interval=600, trigger=t.subscription, max_ticks=2, pull_timeout_s=0.05) == 0
+    assert len(ticks) == 2 and time.monotonic() - start < 5          # did not wait 600 s
+    assert agent.triggered_today == 1 and bus.pull(t.subscription, timeout_s=0.05) == []   # acked
+    hb = agent.heartbeat("idle")
+    assert hb["data"]["trigger"] == t.subscription and hb["data"]["triggered_today"] == 1
+    assert validate(hb) == []

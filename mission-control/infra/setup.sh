@@ -77,6 +77,21 @@ retry gcloud projects add-iam-policy-binding $PROJECT --member serviceAccount:$V
   --role roles/compute.osAdminLogin \
   --condition="expression=resource.name.extract(\"/instances/{name}\").startsWith(\"agent-\"),title=factory-agent-hosts-login,description=OS Login as admin on agent-* VMs only"
 
+say "Chain triggers (R6: the handler makes one filtered factory-trig-* subscription per deployment)"
+# Create/update/delete subscriptions and grant pull on them; attach them to factory-events.
+# The handler only names factory-trig-* subscriptions (mission_control/triggers.py).
+PERMS=pubsub.subscriptions.create,pubsub.subscriptions.delete,pubsub.subscriptions.get,pubsub.subscriptions.update,pubsub.subscriptions.getIamPolicy,pubsub.subscriptions.setIamPolicy
+if gcloud iam roles describe factoryTriggers --project $PROJECT >/dev/null 2>&1; then
+  gcloud iam roles update factoryTriggers --project $PROJECT --permissions $PERMS --quiet >/dev/null
+else
+  gcloud iam roles create factoryTriggers --project $PROJECT --title "Factory chain triggers" \
+    --description "Command handler: factory-trig-* subscriptions on factory-events" --permissions $PERMS --quiet >/dev/null
+fi
+retry gcloud projects add-iam-policy-binding $PROJECT --member serviceAccount:$VM_SA \
+  --role projects/$PROJECT/roles/factoryTriggers --condition=None
+retry gcloud pubsub topics add-iam-policy-binding factory-events $G \
+  --member serviceAccount:$VM_SA --role roles/pubsub.subscriber   # pubsub.topics.attachSubscription
+
 say "Artifact Registry"
 gcloud artifacts repositories describe mission-control --location $REGION $G >/dev/null 2>&1 ||
   gcloud artifacts repositories create mission-control --repository-format docker --location $REGION $G
