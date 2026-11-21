@@ -22,6 +22,7 @@ from mission_control.ports import Event, StateStore
 
 RUNS, NODES, ENGINES = "runs", "nodes", "engines"
 AGENTS, COMPLIANCE = "agents", "compliance"
+COMMANDS, DEPLOYMENTS = "commands", "deployments"
 REPORT_FIELDS = ("product", "pr", "change", "head", "base", "title", "mode", "status", "rules",
                  "findings", "model", "effort", "cost_usd", "diff_truncated", "error")
 TERMINAL_RUN = {"completed", "failed", "cancelled", "abandoned", "lost"}
@@ -139,6 +140,58 @@ def _apply_report(doc: dict | None, ev: Event) -> dict:
     return d
 
 
+def _apply_command(doc: dict | None, ev: Event, kind: str) -> dict:
+    """commands/{id}: what was asked, by whom, accepted or not, each step, the outcome.
+    Order-independent: each event fills its own fields; steps are keyed by seq."""
+    d, data, t = dict(doc or {}), ev.get("data", {}), ev["time"]
+    d["command_id"] = data.get("command_id")
+    if kind == "command.issued":
+        d.update({k: data[k] for k in ("action", "target", "args", "who", "reason", "via") if k in data})
+        d["issued_at"] = t
+        d.setdefault("status", "issued")
+    elif kind == "command.acknowledged":
+        d.update(accepted=data.get("accepted"), acked_at=t, handler=data.get("handler", ""))
+        if data.get("refusal"):
+            d["refusal"] = data["refusal"]
+        if d.get("status") in (None, "issued"):
+            d["status"] = "running" if data.get("accepted") else "refused"
+    elif kind == "deployment.step":
+        steps = dict(d.get("steps") or {})
+        steps[f"{data['seq']:03d}"] = {"step": data.get("step"), "ok": data.get("ok"),
+                                       "detail": data.get("detail", ""), "time": t}
+        d["steps"] = steps
+    elif kind == "deployment.changed":
+        d.update(finished_at=t, ok=data.get("ok"), status="succeeded" if data.get("ok") else "failed")
+        if data.get("error"):
+            d["error"] = data["error"]
+    return d
+
+
+def _apply_deployment(doc: dict | None, ev: Event) -> dict:
+    """deployments/{id}: the latest outcome wins (by time, then id)."""
+    d, data = dict(doc or {}), ev.get("data", {})
+    if (ev["time"], ev["id"]) < (d.get("updated_at", ""), d.get("event_id", "")):
+        return d
+    removed = data.get("action") == "deployment.remove" and data.get("ok")
+    d.update(deployment=data["deployment"], host=data.get("host", ""), last_action=data.get("action"),
+             last_ok=data.get("ok"), last_command=data.get("command_id"), instances=data.get("instances", []),
+             state="removed" if removed else _rollup(data.get("instances", [])),
+             updated_at=ev["time"], event_id=ev["id"])
+    for k in ("digest", "image", "error"):
+        if k in data:
+            d[k] = data[k]
+        elif k == "error":
+            d.pop("error", None)
+    return d
+
+
+def _rollup(instances: list[dict]) -> str:
+    states = {i.get("state") for i in instances}
+    if not instances:
+        return "none"
+    return "running" if states == {"running"} else "stopped" if "running" not in states else "partial"
+
+
 def compliance_key(product: str, pr: int) -> str:
     return f"{product}__{pr}"
 
@@ -175,4 +228,14 @@ def project(ev: Event, store: StateStore) -> list[str]:
         key = compliance_key(data["product"], data["pr"])
         store.update(COMPLIANCE, key, lambda doc: _apply_report(doc, ev))
         return [f"{COMPLIANCE}/{key}"]
+    if kind in ("command.issued", "command.acknowledged", "deployment.step", "deployment.changed"):
+        data = ev.get("data") or {}
+        touched = []
+        if data.get("command_id"):
+            store.update(COMMANDS, data["command_id"], lambda doc: _apply_command(doc, ev, kind))
+            touched.append(f"{COMMANDS}/{data['command_id']}")
+        if kind == "deployment.changed" and data.get("deployment"):
+            store.update(DEPLOYMENTS, data["deployment"], lambda doc: _apply_deployment(doc, ev))
+            touched.append(f"{DEPLOYMENTS}/{data['deployment']}")
+        return touched
     return []

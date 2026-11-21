@@ -44,6 +44,15 @@ retry gcloud pubsub topics add-iam-policy-binding factory-events $G \
   --member serviceAccount:$VM_SA --role roles/pubsub.publisher
 retry gcloud pubsub topics add-iam-policy-binding factory-commands $G \
   --member serviceAccount:$WRITER_SA --role roles/pubsub.publisher
+# Commands: the console and CLI on factory-1 send on factory-commands; the handler on
+# factory-1 pulls them from its own subscription.
+gcloud pubsub subscriptions describe factory-commands-handler $G >/dev/null 2>&1 ||
+  gcloud pubsub subscriptions create factory-commands-handler --topic factory-commands \
+    --ack-deadline 60 --message-retention-duration 1d $G >/dev/null
+retry gcloud pubsub topics add-iam-policy-binding factory-commands $G \
+  --member serviceAccount:$VM_SA --role roles/pubsub.publisher
+retry gcloud pubsub subscriptions add-iam-policy-binding factory-commands-handler $G \
+  --member serviceAccount:$VM_SA --role roles/pubsub.subscriber
 for sa in $VM_SA $WRITER_SA; do   # the bridge keeps its cursor in engines/{engine}
   retry gcloud projects add-iam-policy-binding $PROJECT --member serviceAccount:$sa \
     --role roles/datastore.user --condition=None

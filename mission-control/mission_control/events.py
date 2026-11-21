@@ -47,3 +47,17 @@ def validate(event: Event) -> list[str]:
         v = Draft202012Validator({**data, "$ref": f"#/$defs/{key}"}, format_checker=FormatChecker())
         errors += [f"data: {e.message}" for e in v.iter_errors(event.get("data", {}))]
     return errors
+
+
+def now() -> str:
+    """UTC now, RFC 3339 with microseconds, as every factory source writes it."""
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def make(etype: str, eid: str, subject: str, data: dict, *, source: str, engine: str,
+         time: str = "", **ext: str) -> Event:
+    """A factory event envelope (CloudEvents 1.0, structured JSON)."""
+    return {"specversion": "1.0", "id": eid, "source": source, "type": etype, "subject": subject,
+            "time": time or now(), "datacontenttype": "application/json", "factoryengine": engine,
+            **ext, "data": data}

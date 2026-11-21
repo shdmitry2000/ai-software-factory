@@ -698,6 +698,192 @@
         }
       },
       "additionalProperties": false
+    },
+    "command.issued": {
+      "type": "object",
+      "required": [
+        "command_id",
+        "action",
+        "target",
+        "who",
+        "reason"
+      ],
+      "properties": {
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        },
+        "action": {
+          "type": "string",
+          "pattern": "^[a-z]+\\.[a-z_]+$",
+          "description": "deployment.apply|start|stop|restart|remove|scale; later engine.halt, product.update \u2026"
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "args": {
+          "type": "object"
+        },
+        "who": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 500
+        },
+        "via": {
+          "enum": [
+            "console",
+            "cli",
+            "coordinator"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "command.acknowledged": {
+      "type": "object",
+      "required": [
+        "command_id",
+        "action",
+        "target",
+        "accepted"
+      ],
+      "properties": {
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        },
+        "action": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        },
+        "accepted": {
+          "type": "boolean"
+        },
+        "who": {
+          "type": "string"
+        },
+        "handler": {
+          "type": "string"
+        },
+        "refusal": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "additionalProperties": false
+    },
+    "deployment.step": {
+      "type": "object",
+      "required": [
+        "command_id",
+        "deployment",
+        "seq",
+        "step",
+        "ok"
+      ],
+      "properties": {
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        },
+        "deployment": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*@[a-z][a-z0-9-]*$"
+        },
+        "host": {
+          "type": "string"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "step": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "detail": {
+          "type": "string",
+          "maxLength": 600
+        }
+      },
+      "additionalProperties": false
+    },
+    "deployment.changed": {
+      "type": "object",
+      "required": [
+        "command_id",
+        "deployment",
+        "action",
+        "ok"
+      ],
+      "properties": {
+        "command_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"
+        },
+        "deployment": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*@[a-z][a-z0-9-]*$"
+        },
+        "host": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "string",
+          "maxLength": 600
+        },
+        "digest": {
+          "type": "string"
+        },
+        "image": {
+          "type": "string"
+        },
+        "instances": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "state"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              },
+              "digest": {
+                "type": "string"
+              },
+              "started_at": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

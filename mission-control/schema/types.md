@@ -96,8 +96,10 @@ new version (`…v2`), never an edit.
 |---|---|---|---|
 | `dev.factory.problem.opened` | `problem/{id}` | a rule opened a problem | writer / scheduler rules |
 | `dev.factory.problem.resolved` | `problem/{id}` | it cleared | same |
-| `dev.factory.command.issued` | `engine/{engine}/command/{id}` | halt, unhalt, approve, rerun, assign | dashboard / coordinator (P3–P4) |
-| `dev.factory.command.acknowledged` | `engine/{engine}/command/{id}` | the engine accepted or refused it | engine (P3) |
+| `dev.factory.command.issued` | `engine/{engine}/command/{id}` | an operator asked for an action (deployment.apply/start/stop/restart/remove/scale; later halt, approve, settings); who and why | console / CLI → `factory-commands`; the handler copies it to `factory-events` |
+| `dev.factory.command.acknowledged` | `engine/{engine}/command/{id}` | the handler accepted or refused it (with the reason) | command handler (factory-1) |
+| `dev.factory.deployment.step` | `deployment/{id}` | one step of a command on a deployment (build, image, credential, run, verify …) | command handler |
+| `dev.factory.deployment.changed` | `deployment/{id}` | the command's outcome and the deployment's instances after it | command handler |
 | `dev.factory.queue.updated` | `queue/{product}` | the coordinator's ordered queue and reasons | coordinator (P4) |
 
 ## Id formats
