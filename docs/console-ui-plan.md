@@ -68,8 +68,9 @@ outgrow htmx. The API is designed first either way (OpenAPI in `mission-control/
 
 ```
  ┌───────────────────────────────────────────────────────────────────────────┐
- │ Factory console    [Overview] Projects  Agents  Runs  Workflows           │
- │                     Compliance  Problems  Memories  Prompts  Audit        │
+ │ Factory console    [Overview] Projects  Agents  Hosts  Deploy  Chains     │
+ │                     Runs  Workflows  Compliance  Problems  Memories       │
+ │                     Prompts  Audit                                        │
  │                                         operator: owner@…  ● live  ⏸ halt │
  └───────────────────────────────────────────────────────────────────────────┘
 ```
@@ -79,7 +80,10 @@ outgrow htmx. The API is designed first either way (OpenAPI in `mission-control/
 | **Overview** | is everything healthy right now | rollups of all collections | halt all | UI-1 |
 | **Projects** | each product: open PRs, last lap, problems, compliance, git freshness | `products`, `compliance`, `problems` | edit settings (base branch, compliance mode, rules label, cap) | UI-1 / UI-2 |
 | **Project detail** | PRs with laps and reports; settings history | `products/{p}`, `work_items`, `compliance` | rerun, approve merge | UI-2 / UI-4 |
-| **Agents** | every instance: where, pool, state, current work, model, auth, spend | `agents`, `pools` | add agent, drain, set pool min/max | UI-1 / UI-3 |
+| **Agents** | every running instance: host, state, current work, model, LLM method, spend | `agents` | drain | UI-1 / UI-3 |
+| **Hosts** | factory-1 and every agent VM: state, CPU/memory/disk, Docker, what runs there | `hosts` | add VM, install, drain, remove, restore all | UI-3 |
+| **Deploy** | components and their deployments: digest, host, replicas, state | `deployments`, `deploy/` | deploy, upgrade, roll back, start/stop/restart, scale, logs, remove | UI-3 |
+| **Chains** | which events start which agent, and what each emits | component files, event counts | add a component to a chain | UI-3 |
 | **Runs** | history; retry chains; filters | `runs` | rerun, cancel | UI-1 / UI-4 |
 | **Run detail** | live graph, node status, handoffs, tool activity | `runs/{r}`, `nodes` | open in Archon | UI-4 |
 | **Workflows** | definitions, their runs, per-node agent conversation | `workflows`, `runs/{r}/messages` | – | UI-5 |
@@ -95,11 +99,11 @@ outgrow htmx. The API is designed first either way (OpenAPI in `mission-control/
 
 ```
  ┌ Health ──────────────────────────────────────────────────────────────────┐
- │ Engines 1/1 alive   Agents 1 running (GKE 1, VM 0)   Problems 0 open       │
+ │ Engines 1/1 alive   Agents 2 running (hosts: 1)       Problems 0 open     │
  │ Laps today 0        Compliance reports today 3        Spend today $0.00   │
  └──────────────────────────────────────────────────────────────────────────┘
  ┌ Running now ────────────────────────┐ ┌ Needs you ─────────────────────────┐
- │ (none)                              │ │ ⚠ Vertex models not enabled (OB1)   │
+ │ (none)                              │ │ ⚠ vm-agents-1 disk 91%              │
  │                                     │ │ ⚠ GitHub identity not decided       │
  └─────────────────────────────────────┘ └────────────────────────────────────┘
  ┌ Recent ──────────────────────────────────────────────────────────────────┐
@@ -128,14 +132,38 @@ outgrow htmx. The API is designed first either way (OpenAPI in `mission-control/
 ### Agents
 
 ```
- Pool        Kind        Runtime  Replicas (min..max)  [+ Add] [Drain]
- compliance  compliance  gke      1 (1..3)
- builders    engine      gce      1 (1..1)
  ┌──────────────────────────────────────────────────────────────────────────┐
- │ agent              location                         state  model   auth  │
- │ compliance-7f9c    gke:factory-agents/compliance-7f9c idle  haiku   vertex│
- │ factory-1          gce:me-west1-a/factory-1         busy   opus    subscr│
+ │ agent              host            state  current work      model   llm  │
+ │ compliance-1       factory-1       idle   –                 haiku   proj │
+ │ engine             factory-1       busy   lap 41 build      opus    proj │
  └──────────────────────────────────────────────────────────────────────────┘
+```
+
+### Hosts and deploy
+
+Design: [deploy-and-hosts-plan.md](deploy-and-hosts-plan.md).
+
+```
+ Hosts                                         [+ Add VM]  [Restore all]
+ ┌──────────────────────────────────────────────────────────────────────────┐
+ │ host          kind   state      cpu  mem   disk  docker  runs            │
+ │ factory-1     local  healthy    34%  61%   48%   27.3    engine, bridge, │
+ │                                                          compliance      │
+ │ vm-agents-1   vm     installing  –    –     –     –      step 3/5 docker │
+ └──────────────────────────────────────────────────────────────────────────┘
+
+ Deploy                                                     [+ Deploy]
+ ┌──────────────────────────────────────────────────────────────────────────┐
+ │ component   host        digest        replicas  state    llm             │
+ │ compliance  factory-1   sha256:3f9c…  1         running  project         │
+ │   [Restart] [Stop] [Scale] [Upgrade ▾] [Roll back] [Logs] [Remove]       │
+ └──────────────────────────────────────────────────────────────────────────┘
+ Deploy dialog: component ▾  host ▾  digest ▾ (latest 5)  replicas  settings
+                reason ______  [Deploy]  → progress: pull ✓ env ✓ subs ✓ run … heartbeat
+
+ Chains
+   pr.opened ─┐
+   pr.updated ┴─▶ compliance ─▶ compliance.reported ─▶ (add next agent +)
 ```
 
 ### Run detail (live)
@@ -162,7 +190,7 @@ Every action is a command, never a direct write:
 
 ```
  button ─▶ console server: validate + who ─▶ dev.factory.command.issued (factory-commands)
-        ─▶ handler on factory-1 (or GKE reconciler) ─▶ acknowledged / refused
+        ─▶ handler on factory-1 ─▶ acknowledged / refused
         ─▶ result event (product.updated, engine.halted, pool.scaled …) ─▶ projections
 ```
 
@@ -172,7 +200,12 @@ Every action is a command, never a direct write:
 | Halt / unhalt engine | `engine.halt` / `engine.unhalt` | handler → `consumer.py halt` | `engine.halted` / `engine.unhalted` |
 | Rerun / cancel run | `run.rerun` / `run.cancel` | handler → Archon | `run.started` (chained) / `run.cancelled` |
 | Approve merge | `approval.resolve` | handler → Archon | `approval.resolved` |
-| Add agent / drain / pool size | `pool.scale {pool, min, max}` / `agent.drain` | reconciler | `pool.scaled`, `agent.heartbeat` |
+| Add VM host / install / remove | `host.create` / `host.install` / `host.remove` | handler → AgentRuntime (`gce-vm`) | `host.created`, `deploy.step`, `host.installed` |
+| Deploy / upgrade / roll back | `deployment.apply {component, host, digest, replicas}` | handler → AgentRuntime (`docker-local`, `docker-ssh`) | `deploy.step` per step, `deployment.applied` |
+| Start / stop / restart / scale / remove | `deployment.start` … `deployment.remove` | handler → AgentRuntime | `deployment.changed`, `agent.heartbeat` |
+| Logs | `deployment.logs {tail, follow}` (read-only, not stored) | handler streams to the console | – |
+| Restore after the sweep | `fleet.restore` | handler: recreate hosts, reinstall, reapply | `host.installed`, `deployment.applied` |
+| Drain an agent | `agent.drain` | handler | `agent.heartbeat` (state draining) |
 | New prompt version / move label | `prompt.propose {name, text}` / `prompt.label {name, label, version}` | PromptRegistry adapter (git: opens a PR; service: needs approver) | `prompt.version.created`, `prompt.label.moved` |
 | Re-review a PR | `compliance.rereview {product, pr}` | compliance agent | `compliance.reported` |
 | Propose memory change | `memory.propose` | MemoryStore (opens a PR) | `memory.changed` after merge |
@@ -207,7 +240,7 @@ and tests call.
 | # | Step | Done when |
 |---|---|---|
 | UI-1.1 | Overview health tiles and "needs you" list | numbers match Firestore by hand count |
-| UI-1.2 | Agents view (from `agents`, `engines`) | factory-1 and the compliance pod both listed live |
+| UI-1.2 | Agents view (from `agents`, `engines`) | factory-1 and the compliance container both listed live |
 | UI-1.3 | Projects view (from `products`, `compliance`) | the converter with its open PRs and reports |
 | UI-1.4 | Compliance view | every report with rules version, findings, cost |
 | UI-1.5 | Runs view: history, filters, retry chains | a rerun shows under its first attempt |
@@ -223,12 +256,18 @@ and tests call.
 | UI-2.4 | Audit view | every command with who, when, reason, result |
 | UI-2.5 | Problems: acknowledge / resolve | state change recorded as an event |
 
-### UI-3 Fleet (Stage R)
+### UI-3 Hosts, deploy and chains (Stage R, [deploy-and-hosts-plan.md](deploy-and-hosts-plan.md))
 
 | # | Step | Done when |
 |---|---|---|
-| UI-3.1 | Pools panel from `fleet.yaml` + overrides | pools listed with min..max |
-| UI-3.2 | Add agent / drain / set min..max → `pool.scale` | a new compliance pod appears in Agents within 2 minutes |
+| UI-3.1 | Hosts screen (read-only), from `hosts` | factory-1 listed with health and what runs on it |
+| UI-3.2 | Deploy screen: deployments with digest and state; start/stop/restart/scale | restarting compliance shows each step live and the audit entry |
+| UI-3.3 | Deploy dialog: component, host, digest, replicas, settings, reason | deploying compliance to factory-1 from the console works end to end |
+| UI-3.4 | Add VM host + install with live progress | a new VM reaches healthy; compliance deployed to it |
+| UI-3.5 | Logs panel (tail + follow) | last 200 lines, then new lines live |
+| UI-3.6 | Upgrade / roll back by digest | a rollback restores the previous digest |
+| UI-3.7 | Chains graph from component files, event counts per edge | the compliance chain shows with today's counts |
+| UI-3.8 | Restore all (after the sweep) | weekend drill passes with one click |
 
 ### UI-4 Live runs (Stage H)
 
@@ -257,12 +296,13 @@ and tests call.
 ## 8. Order with the rest of the plan
 
 ```
- OB1 (Vertex) → OC1–OC3 (compliance agent live)
+ R1–R2 (compliance agent as a container on factory-1) → OC2–OC4
    → UI-0 → UI-1 (+ Q1–Q5 data) → UI-2 (+ N1 settings, M1)
-   → R + UI-3 → H + UI-4 → S + UI-5 → I/U/T + UI-6 → E (first real lap)
+   → R3–R9 + UI-3 (hosts, deploy, chains) → H + UI-4 → S + UI-5
+   → I/U/T + UI-6 → E (first real lap)
 ```
 
-UI-0 and UI-1 can start in parallel with OC steps: they read collections that already
+UI-0 and UI-1 can start in parallel with R1–R2: they read collections that already
 exist (`runs`, `nodes`, `engines`) and the new ones (`agents`, `compliance`).
 
 ## 9. Open questions

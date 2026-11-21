@@ -472,6 +472,13 @@ pools:
 
 ## GKE agents and the compliance agent
 
+> **Changed 2026-11-21.** No Vertex AI for now, and GKE is parked. The compliance agent
+> and later agents run as Docker containers on factory-1 or on sandbox VMs, use Claude
+> the way the project does, and are installed, deployed and chained from the console:
+> [deploy-and-hosts-plan.md](deploy-and-hosts-plan.md). The agent design below (rules,
+> reviewer, reports, empty rules cost nothing) still holds; the GKE and Vertex parts are
+> kept for a later option.
+
 The first agent on GKE is a **compliance agent**: it reviews every open PR of the
 products it is assigned to against written compliance rules and reports findings.
 

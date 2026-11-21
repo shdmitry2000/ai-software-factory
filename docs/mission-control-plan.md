@@ -6,10 +6,11 @@ check passes. Design: [mission-control-design.md](mission-control-design.md).
 
 Legend: ☐ to do · ◐ in progress · ☑ done
 
-**Order (2026-11-17, updated).** A–D done → **O** (compliance agent on GKE: O-A done,
-O-B mostly done, waits on Vertex access) → **console UI-0, UI-1** (Stage F, can start
-alongside O-C) → **Q** (projects and agents data) → **UI-2** + N + M1 (settings,
-commands, audit) → **R** + UI-3 (fleet) → H + UI-4 (live runs) → **S** + UI-5
+**Order (2026-11-21, updated).** A–D done → **O** (compliance agent: O-A done; runs
+as a Docker container on factory-1 through R1–R2, no Vertex, GKE parked) → **console
+UI-0, UI-1** (Stage F, can start alongside) → **Q** (projects and agents data) →
+**UI-2** + N + M1 (settings, commands, audit) → **R** + UI-3 (hosts, deploy, agent
+chains, all from the console) → H + UI-4 (live runs) → **S** + UI-5
 (workflows and messages) → I + **U** + **T** + UI-6 (memories, prompts, skills) → E
 (first real lap on the converter) → G, J, K, L. Letters are names, not order; each
 step's check must pass before the next starts.
@@ -195,9 +196,15 @@ UI-6): [console-ui-plan.md](console-ui-plan.md).
 | N5 | Decide with the owner: base branch (**done: `main`**, a console setting); the factory's own GitHub identity (options in the design's Git rules; two GitHub Apps recommended) | identity decision recorded in the design | ◐ |
 | N6 | Bridge redaction for holdout agents: metadata only (no `rawInput`, `output`, `summary`, `text`) | unit test with a synthetic holdout run: no scenario text in any published event | ☐ |
 
-## Stage O — Compliance agent on GKE, advisory (owner's near-term goal)
+## Stage O — Compliance agent, advisory (owner's near-term goal)
 
-Decisions (2026-11-17): **advisory only** (never blocks a merge); rules start **empty**
+**Changed 2026-11-21:** no Vertex AI for now; agents run as Docker containers on
+factory-1 or on sandbox VMs the console installs, and use Claude the way the project
+does (`llm: project`). GKE is parked: steps OB1, OB3–OB5, OC1, OC6–OC7 are replaced by
+Stage R ([deploy-and-hosts-plan.md](deploy-and-hosts-plan.md)). The GKE cluster is
+not rebuilt after the sweep; `bin/gke/` stays for later.
+
+Original decisions (2026-11-17): **advisory only** (never blocks a merge); rules start **empty**
 and are edited in the prompt manager with versions; while empty the agent reports
 `no_rules` **without any model call** (zero cost); Claude comes from **Vertex AI through
 Workload Identity** (no Claude secret anywhere); the cluster and console are reachable
@@ -221,11 +228,11 @@ agent](mission-control-design.md#gke-agents-and-the-compliance-agent).
 
 | # | Step | Done when | |
 |---|---|---|---|
-| OB1 | **Owner**: enable the Anthropic models in Vertex AI Model Garden for the project (one-time terms acceptance) | a Haiku 5.5 call from factory-1 with its own service account returns 200; region chosen (`me-west1`, else `eu`/`global`) and recorded | ☐ |
+| OB1 | **Owner**: enable the Anthropic models in Vertex AI Model Garden for the project (one-time terms acceptance) | a Haiku 5.5 call from factory-1 with its own service account returns 200; region chosen (`me-west1`, else `eu`/`global`) and recorded | parked → R |
 | OB2 | Cloud Router + Cloud NAT `factory-nat` in me-west1 (in `create-cluster.sh`, idempotent) | a pod/VM without a public IP reaches api.github.com | ✅ |
-| OB3 | Autopilot cluster `factory-agents`: private nodes, DNS endpoint, private IP endpoint, authorized network = factory-1; `factory-vm` gets `roles/container.developer`, nobody else | `kubectl get ns` works on factory-1 and fails from the Mac and from any other VM | ✅ |
-| OB4 | Workload Identity: namespace `agents`, KSA `compliance` → `roles/aiplatform.user` + Pub/Sub publisher on `factory-events` only | a test pod calls Vertex Haiku and publishes one event; no key or secret mounted | ◐ |
-| OB5 | Image built on factory-1 and pushed to Artifact Registry `mission-control/agent` by digest | digest listed; Mac never pushes | ☐ |
+| OB3 | Autopilot cluster `factory-agents`: private nodes, DNS endpoint, private IP endpoint, authorized network = factory-1; `factory-vm` gets `roles/container.developer`, nobody else | `kubectl get ns` works on factory-1 and fails from the Mac and from any other VM | parked → R |
+| OB4 | Workload Identity: namespace `agents`, KSA `compliance` → `roles/aiplatform.user` + Pub/Sub publisher on `factory-events` only | a test pod calls Vertex Haiku and publishes one event; no key or secret mounted | parked → R |
+| OB5 | Image built on factory-1 and pushed to Artifact Registry `mission-control/agent` by digest | digest listed; Mac never pushes | parked → R |
 | OB6 | Console only through the main node: Archon UI and later dashboards bound to 127.0.0.1; `bin/gcp/console.sh` opens the IAP SSH `-L` tunnel; the old IAP rule for tcp:3090 removed | console opens through the tunnel; direct IAP to 3090 refused | ☐ |
 | OB7 | (owner OK needed) remove factory-1's public IP; egress through Cloud NAT | factory still runs a lap; `gcloud compute ssh --tunnel-through-iap` works | ☐ |
 
@@ -233,13 +240,13 @@ agent](mission-control-design.md#gke-agents-and-the-compliance-agent).
 
 | # | Step | Done when | |
 |---|---|---|---|
-| OC1 | Deploy `compliance-agent` (1 replica, `agents` namespace) from factory-1 with `bin/gke/deploy.sh` | pod Running; heartbeat in Firestore `agents/` every 60 s | ☐ |
+| OC1 | Deploy `compliance-agent` (1 replica, `agents` namespace) from factory-1 with `bin/gke/deploy.sh` | pod Running; heartbeat in Firestore `agents/` every 60 s | parked → R |
 | OC2 | Reports for the converter, empty rules | each open PR head gets a `no_rules` report in `compliance/` within 10 min; zero Vertex calls in the logs | ☐ |
 | OC3 | State survives restarts: reviewed heads read back from the store, not memory | delete the pod: no duplicate reports | ☐ |
 | OC4 | Spend cap: per-report cost in the event; daily cap (default $1) stops reviews and opens a problem | a forced cap of $0 stops reviews and the problem shows | ☐ |
 | OC5 | First rule: owner adds one rule (PR to `prompts/compliance/rules.md`, label `production` moved) | the next head is reviewed by Haiku; report names the rule id and the new rules version; old reports unchanged | ☐ |
-| OC6 | `rebuild.sh` recreates NAT, cluster, bindings, deploys the agent | weekend drill: agent back and reporting, no duplicates | ☐ |
-| OC7 | FQDN egress policy: only GitHub (and Google APIs privately) | a pod `curl https://example.com` fails; GitHub works | ☐ |
+| OC6 | `rebuild.sh` recreates NAT, cluster, bindings, deploys the agent | weekend drill: agent back and reporting, no duplicates | parked → R |
+| OC7 | FQDN egress policy: only GitHub (and Google APIs privately) | a pod `curl https://example.com` fails; GitHub works | parked → R |
 | OC8 | After the GitHub App decision: `factory-compliance` App; main node mints 1-hour tokens; neutral Check Run + one comment edited in place | a test PR shows the advisory check; merge unaffected | ☐ |
 | OC9 | Rules move into the prompt manager service (Stage T, MLflow adapter) | a label move changes the next report's rules version only | ☐ |
 
@@ -251,21 +258,30 @@ agent](mission-control-design.md#gke-agents-and-the-compliance-agent).
 | Q2 | GitActivity port + contract tests; GitHub **polling** adapter (ETag, 60 s) | contract tests pass against a test repo | ☐ |
 | Q3 | Poller publishes PR, push, check and issue events for every product | opening a PR produces `dev.factory.pr.opened` within 2 minutes | ☐ |
 | Q4 | Product rollups: open PRs, last lap, problems, compliance findings, `git_seen_at` | rollup matches GitHub and Firestore by hand count | ☐ |
-| Q5 | `agents` projection from agent heartbeats (VM and GKE alike) | factory-1 and the compliance pod both listed with location and state | ☐ |
+| Q5 | `agents` projection from agent heartbeats (any host) | factory-1 and the compliance container both listed with host and state | ☐ |
 | Q6 | Projects view | every product with its rollups; stale git data marked | ☐ |
 | Q7 | Agents view | each agent's location, state, current work, model and auth method | ☐ |
 
-## Stage R — Agent fleet and automatic scale-out
+## Stage R — Hosts, deploy and agent chains (from the console)
 
-| # | Step | Done when | |
-|---|---|---|---|
-| R1 | AgentRuntime port + contract tests (deploy, scale, list, drain, delete) with an in-memory fake | contract tests pass on the fake | ☐ |
-| R2 | GKE adapter | contract tests pass on `factory-agents` | ☐ |
-| R3 | GCE adapter wrapping `create-factory-vm.sh` | contract tests pass with a throwaway VM | ☐ |
-| R4 | `fleet.yaml` schema + loader (pools: kind, runtime, image, products, min/max, scale_on, model, mode) | the compliance and builders pools load | ☐ |
-| R5 | Reconciler as a Cloud Run job (every minute): desired vs listed | delete the compliance pod: it is back within 2 minutes | ☐ |
-| R6 | Demand-based scaling (`pending_prs`, later queue depth) within min..max | 3 waiting PRs scale compliance 1 → 3, then back to 1 | ☐ |
-| R7 | `dev.factory.command.scale` + "Add agent" / "Drain" on the Agents view | the button adds a pod that appears in Agents | ☐ |
+Design and steps: [deploy-and-hosts-plan.md](deploy-and-hosts-plan.md) §8 (R1–R9);
+console screens UI-3 in [console-ui-plan.md](console-ui-plan.md). Everything runs as
+Docker containers on factory-1 or on sandbox VMs with no public IP; only factory-1
+deploys; every install, deploy and process control is a command event.
+
+| # | Step | |
+|---|---|---|
+| R1 | AgentRuntime port, fake adapter, contract tests | ☐ |
+| R2 | `docker-local`; compliance agent as a container on factory-1 (`llm: project`) | ☐ |
+| R3 | `deploy/` component, host and deployment files: schema and loader | ☐ |
+| R4 | Command handler for deployments, progress events | ☐ |
+| R5 | `gce-vm` + `docker-ssh`: sandbox VM hosts, SSH only from factory-1 | ☐ |
+| R6 | Chains: `consumes` → filtered Pub/Sub subscriptions; agents start on events | ☐ |
+| R7 | Logs tail and follow | ☐ |
+| R8 | `fleet.restore` after the sweep | ☐ |
+| R9 | Upgrade and roll back by digest | ☐ |
+
+Automatic scale-out by demand (old R6) comes after R9, on the same port.
 
 ## Stage S — Workflow browser and agent messages
 

@@ -4,7 +4,7 @@ The whole system on one page set: what runs where, how data and control move, wh
 do what, and what is built versus planned. Detailed designs and build steps live in
 the documents linked from each section.
 
-Status: 2026-11-17. Legend used throughout: **running** (deployed and working),
+Status: 2026-11-21 (hosting changed: Docker on servers, no Vertex, GKE parked). Legend used throughout: **running** (deployed and working),
 **built** (code and tests exist, not deployed), **planned** (designed, not built).
 
 | Document | What it holds |
@@ -12,6 +12,7 @@ Status: 2026-11-17. Legend used throughout: **running** (deployed and working),
 | this file | the architecture: components, flows, security, data, operations |
 | [mission-control-design.md](mission-control-design.md) | mission control in depth: events, projections, problems, fleet, GKE agents |
 | [console-ui-plan.md](console-ui-plan.md) | the operator console: access, screens, actions, build steps |
+| [deploy-and-hosts-plan.md](deploy-and-hosts-plan.md) | hosts, deploy, process control and agent chains, all from the console |
 | [prompt-skill-manager-design.md](prompt-skill-manager-design.md) | prompt and skill managers (independent services) |
 | [mission-control-plan.md](mission-control-plan.md) | the build plan in small, checkable steps |
 | [gcp-runbook.md](gcp-runbook.md) | how to create, sign in to and rebuild the GCP setup |
@@ -30,8 +31,10 @@ Around that core sit:
 
 - **Mission control**: every run, agent and product made visible and controllable
   from one console, with history that survives the weekly sandbox sweep.
-- **Agents outside the engine**: long-running agents on GKE, starting with an
-  advisory **compliance agent** that reviews every open PR against versioned rules.
+- **Agents outside the engine**: long-running agents in Docker containers on the main
+  node or on sandbox VMs, installed, deployed and chained from the console, starting
+  with an advisory **compliance agent** that reviews every open PR against versioned
+  rules.
 - **Prompt and skill managers**: versioned, labelled, reviewable prompts and skills.
 
 ## 2. Principles (the rules everything below follows)
@@ -39,13 +42,14 @@ Around that core sit:
 1. **Pull requests only.** Product repos change only through PRs. Nothing, the
    factory included, pushes to a shared branch. The PR base branch is a per-product
    setting (`main` today), changeable from the console.
-2. **Everything through the main node.** The agent cluster, the console and every
-   control action are reachable only from the main node (factory-1). No public
-   endpoints. Operators reach the main node through Google IAP.
-3. **No long-lived secrets where work runs.** Pods and services use Workload Identity;
-   Claude on GKE comes from Vertex AI. Secrets that must exist (the owner's logins,
-   later GitHub App keys) live only in the repo's `.factory-secrets/` on the owner's
-   Mac and on the main node.
+2. **Everything through the main node.** Agent hosts, the console and every control
+   action are reachable only from the main node (factory-1); only it deploys. No
+   public endpoints. Operators reach the main node through Google IAP.
+3. **Secrets stay narrow.** Google access uses service-account identity, never keys.
+   The LLM credential (the project's Claude login, or an API key per agent) lives in
+   the repo's `.factory-secrets/` on the owner's Mac, and the main node pushes it over
+   SSH stdin into a root-only env file on the host that runs the agent. Never in an
+   image, git, an event or a log.
 4. **Ports and adapters.** Core code talks to interfaces (`mission_control/ports.py`);
    which product serves each port (Pub/Sub, Firestore, GitHub, MLflow…) is
    configuration. A new adapter must pass the port's contract tests.
@@ -78,15 +82,16 @@ Around that core sit:
         │ reads diffs (NAT)                       │ events   │ deploys
         │                                         ▼          ▼
    ┌────┴─────────────────┐   events    ┌──────────────┐  ┌─────────────────────┐
-   │ GKE factory-agents   │────────────▶│ Pub/Sub +    │  │ Artifact Registry   │
-   │ compliance agent …   │             │ writer +     │  │ (images)            │
-   │ (private)            │── Claude ──▶│ Firestore    │  └─────────────────────┘
-   └──────────────────────┘  Vertex AI  └──────────────┘
+   │ agent hosts (Docker) │────────────▶│ Pub/Sub +    │  │ Artifact Registry   │
+   │ factory-1 + sandbox  │             │ writer +     │  │ (images)            │
+   │ VMs, no public IP    │             │ Firestore    │  └─────────────────────┘
+   └──────────┬───────────┘             └──────────────┘
+              └── Claude (project login / API key) ──▶ Anthropic
 ```
 
-External systems: **GitHub** (code host, tracker today), **Vertex AI** (Claude for
-agents on GKE), **Anthropic** (Claude for the engine on factory-1, owner's subscription,
-interactive use), **Google IAP** (operator access).
+External systems: **GitHub** (code host, tracker today), **Anthropic** (Claude for
+the engine and the agents, as the project uses it), **Google IAP** (operator access).
+Vertex AI is a possible later option per agent.
 
 ## 4. Components
 
@@ -101,9 +106,10 @@ interactive use), **Google IAP** (operator access).
 | **State store** | Firestore `(default)` | `events`, `runs`, `nodes`, `engines`; next `agents`, `compliance`, `products`, `problems`, `work_items` … | running |
 | **Console** | factory-1, `127.0.0.1` only | operator UI: status, history, live runs, settings, commands | planned ([console-ui-plan.md](console-ui-plan.md)) |
 | **Command handler** | factory-1 | executes console commands (halt, settings, scale) from `factory-commands` | planned |
-| **Agent cluster** `factory-agents` | GKE Autopilot me-west1, private | runs agents that are not Archon workflows | running (empty) |
-| **Compliance agent** | GKE pod (`agents/compliance`) | advisory review of every open PR head against versioned rules | built, waits for Vertex access |
-| **Fleet reconciler** | Cloud Run job or main node | makes running agents match `fleet.yaml` and demand | planned (Stage R) |
+| **Agent hosts** | factory-1 (`local`) and sandbox VMs (`vm`) running Docker | run agents and, later, other system parts | factory-1 running; VM hosts planned (Stage R) |
+| **AgentRuntime** (in the command handler) | factory-1 | install hosts; deploy, start, stop, upgrade, roll back, scale, logs; restore after the sweep | planned ([deploy-and-hosts-plan.md](deploy-and-hosts-plan.md)) |
+| **Compliance agent** | container (`agents/compliance`, image `mission-control/agent`) | advisory review of every open PR head against versioned rules | built; first deploy on factory-1 (R2) |
+| GKE cluster `factory-agents` | – | parked 2026-11-21; scripts kept in `bin/gke/`, not rebuilt after the sweep | parked |
 | **Prompt manager** | git `prompts/` now; MLflow later | versioned, labelled prompts (compliance rules first) | built (file adapter) / planned (service) |
 | **Skill manager** | git plugin marketplace | versioned skills and subagents materialized per lap | planned (Stage T) |
 | **GitHub poller** | main node | PR, push and check events for every product (no public webhook needed) | planned (Stage Q) |
@@ -116,10 +122,10 @@ interactive use), **Google IAP** (operator access).
  │  factory-1  10.208.0.38  e2-standard-2  Ubuntu 24.04  SA factory-vm          │
  │    Archon + consumer + bridge + archon-console(:3090) [+ console, planned]   │
  │                                                                              │
- │  GKE Autopilot factory-agents  (private nodes, control plane 10.208.0.39,    │
- │    private endpoint only, authorized network = 10.208.0.38/32, DNS endpoint  │
- │    off, node SA factory-gke-node)                                            │
- │      ns agents: Deployment compliance-agent (KSA compliance, no Secret)      │
+ │    Docker: compliance agent container (planned R2)                           │
+ │                                                                              │
+ │  vm-agents-N  (planned)  no public IP, SA factory-agent, Docker; SSH only    │
+ │    from 10.208.0.38; created, installed and deployed from the console        │
  │                                                                              │
  │  Cloud Router factory-router + Cloud NAT factory-nat  (egress: GitHub)       │
  │  Firewall: 35.235.240.0/20 → tcp:22 (IAP SSH)  [tcp:3090 rule to retire]     │
@@ -129,7 +135,6 @@ interactive use), **Google IAP** (operator access).
     Cloud Run  mission-control-writer
     Firestore (default), native mode
     Artifact Registry  me-west1/mission-control  (writer and agent images)
-    Vertex AI  Claude models (to enable once in Model Garden)
 ```
 
 Other workloads in the project (`rag-eval-bank` cluster and its rules) are not part
@@ -140,23 +145,25 @@ of the factory and are never touched by its scripts.
 | Identity | Used by | Grants (least privilege) |
 |---|---|---|
 | owner (Google account) | Mac scripts, IAP | project owner; IAP tunnel |
-| `factory-vm` SA | factory-1 | Pub/Sub publish `factory-events`; Firestore user; `container.developer` (the only cluster user); Artifact Registry writer on `mission-control` |
+| `factory-vm` SA | factory-1 | Pub/Sub publish `factory-events`; Firestore user; Artifact Registry writer on `mission-control`; creates agent VMs (planned) |
 | `factory-writer` SA | Cloud Run writer | Pub/Sub subscriber; Firestore user; publish `factory-commands` |
-| `factory-gke-node` SA | GKE nodes | default node role; Artifact Registry reader |
-| KSA `agents/compliance` (Workload Identity principal) | compliance pod | `aiplatform.user` (Claude on Vertex); Pub/Sub publish `factory-events`; Firestore viewer |
-| Owner's Claude subscription | factory-1 engine (interactive, owner's own work) | never in pods |
+| `factory-agent` SA (planned) | agent VM hosts | Pub/Sub publish `factory-events` and subscribe to its own subscriptions; Firestore viewer; Artifact Registry reader |
+| `factory-vm` on agent hosts (planned) | factory-1 deploying | `compute.osAdminLogin` on agent hosts only (SSH for deploys) |
+| LLM credential | engine and agents (`llm: project` or `api_key`) | root-only env file on the host that runs it; pushed by factory-1 over SSH stdin |
 | GitHub: owner's token today | factory-1 engine | to be replaced by GitHub Apps |
 | GitHub Apps (planned) `factory-builder`, `factory-compliance` | engine, compliance agent | builder: contents + PR write; compliance: read + checks/issues write. Keys only on the main node; 1-hour tokens per job |
+
+The GKE identities (`factory-gke-node`, KSA `agents/compliance`) are parked with the cluster.
 
 ## 7. Security model
 
 ```
  operator ─▶ IAP (Google login, iap.tunnelResourceAccessor) ─▶ SSH to factory-1
               └─ port forward -L ─▶ console on 127.0.0.1 (factory-1)
- factory-1 ─▶ GKE control plane (private IP, only authorized network) ─▶ pods
- pods ─▶ Google APIs (Private Google Access, Workload Identity tokens)
- pods ─▶ GitHub (Cloud NAT; later FQDN policy: github only)
- nobody ─▶ pods (NetworkPolicy deny-ingress)
+ factory-1 ─▶ agent VM hosts (SSH, internal IP, firewall source 10.208.0.38 only) ─▶ docker
+ containers ─▶ Google APIs (Private Google Access, host service account)
+ containers ─▶ GitHub, Anthropic (Cloud NAT)
+ nobody ─▶ containers (no published ports, no public IPs)
 ```
 
 - **No public entry points.** No load balancer, no public Cloud Run service for
@@ -164,13 +171,14 @@ of the factory and are never touched by its scripts.
   removed once NAT carries its egress (plan OB7, owner's OK).
 - **Secrets inventory.** Owner's Mac: `.factory-secrets/` (gcloud, docker, kube, gh,
   Claude token; mode 700, git-ignored, denied to agents). factory-1: `~/.factory-env`
-  (owner's Claude and GitHub logins, delivered over stdin). GKE: **none**. Later:
-  GitHub App keys in Secret Manager, readable by `factory-vm` only.
+  (owner's Claude and GitHub logins, delivered over stdin). Agent hosts:
+  `/etc/factory/<component>.env` (root, 600), the LLM credential only. Later: GitHub
+  App keys in Secret Manager, readable by `factory-vm` only.
 - **Data exposure.** Events carry metadata, never holdout text; agent message capture
   (Stage S) redacts holdout agents to metadata and scans bodies for secrets.
 - **Agent sandboxing.** Engine agents run in Docker sandboxes on factory-1. The
-  compliance agent runs non-root, read-only filesystem, all capabilities dropped, no
-  tools for the model, no write token.
+  compliance container runs non-root, read-only filesystem, all capabilities dropped,
+  no tools for the model, no write token.
 - **Audit.** Every console action becomes an event (who, what, when) in the same log.
 
 ## 8. Data flows
@@ -201,13 +209,13 @@ of the factory and are never touched by its scripts.
 ### 8.3 Compliance review (advisory)
 
 ```
- every 10 min, compliance pod:
+ every 10 min (later also on PR events), compliance container:
    rules  = PromptRegistry.get("compliance/rules", label="production")
    for each open PR (GitHub, read-only):
      skip if this head was already reported against this rules hash
      rules empty  ─▶ report status no_rules        (no diff, no model call, $0)
      spend ≥ cap  ─▶ report status capped           (no model call)
-     else diff ─▶ claude -p (Haiku, low effort, no tools, via Vertex) ─▶ findings
+     else diff ─▶ claude -p (Haiku, low effort, no tools, project LLM login) ─▶ findings
    publish dev.factory.compliance.reported {head, base, rules version+hash, findings, cost}
  writer ─▶ compliance/{product}__{pr} (latest report wins)
  later (GitHub App): neutral Check Run + one comment edited in place; never blocks
@@ -232,16 +240,30 @@ of the factory and are never touched by its scripts.
    ─▶ old reports keep version 1 (reproducible); rollback = move the label back
 ```
 
-### 8.6 Weekly sweep and rebuild
+### 8.6 Deploy from the console
+
+```
+ operator: Deploy compliance → vm-agents-1   (or add a VM host, start, stop, upgrade …)
+   ─▶ console ─▶ command.issued ─▶ handler on factory-1 ─▶ AgentRuntime
+        local: docker on factory-1      vm: docker over SSH (internal IP)
+   ─▶ pull by digest → env file over stdin → Pub/Sub subscriptions (chain) → run
+      → first heartbeat;  each step an event dev.factory.deploy.step
+   ─▶ deployment.applied ─▶ projections hosts/, deployments/, agents/ ─▶ console live
+```
+
+Details: [deploy-and-hosts-plan.md](deploy-and-hosts-plan.md).
+
+### 8.7 Weekly sweep and rebuild
 
 ```
  Fri 21:00 UTC  halt the factory (consumer.py halt)
  Sat–Sun        sandbox cleaner deletes VMs, disks, firewall rules, subnets, GKE,
                 disables APIs. Pub/Sub, Firestore, Cloud Run, images survive.
  Sun/Mon        bin/gcp/rebuild.sh: enable APIs → factory-1 → logins (bin/login.sh,
-                push-logins.sh) → app setup → bridge → bin/gke/create-cluster.sh
-                → bin/gke/remote-deploy.sh → agents resume; reviewed heads are
-                read back from Firestore, so nothing is reported twice
+                push-logins.sh) → app setup → bridge → console
+                → "Restore all" in the console: VM hosts recreated, agents
+                redeployed at pinned digests; reviewed heads are read back from
+                Firestore, so nothing is reported twice
 ```
 
 ## 9. Console (operator UI)
@@ -249,7 +271,7 @@ of the factory and are never touched by its scripts.
 Runs on factory-1, bound to `127.0.0.1`, opened through an IAP SSH tunnel
 (`bin/gcp/console.sh`). One server reads Firestore with the main node's identity and
 streams changes to the browser; every action is a command event. Screens: Overview,
-Projects (with product settings such as base branch), Agents (pools, add/drain),
+Projects (with product settings such as base branch), Agents, Hosts, Deploy, Chains,
 Runs (history and live graph), Workflows (agent messages), Compliance, Problems,
 Memories, Prompts & Skills, Audit. Archon's own console moves behind the same tunnel
 and is linked per run. Full plan: [console-ui-plan.md](console-ui-plan.md).
@@ -262,7 +284,9 @@ and is linked per run. Full plan: [console-ui-plan.md](console-ui-plan.md).
 | `runs/{run}` | workflow run: status, times, graph, failure | writer | running |
 | `nodes/{run}:{node}` | step of a run | writer | running |
 | `engines/{engine}` | engine heartbeat and bridge cursor | writer / bridge | running |
-| `agents/{agent_id}` | agent instance: pool, location, state, model, auth method, spend | writer | built |
+| `agents/{agent_id}` | agent instance: host, state, model, LLM method, spend | writer | built |
+| `hosts/{host}` | host: kind, state, health, what runs there | writer | planned (R) |
+| `deployments/{id}` | component, host, digest, replicas, state, last steps | writer | planned (R) |
 | `compliance/{product}__{pr}` | latest advisory report of a PR | writer | built |
 | `products/{product}` | settings (seeded from `products/*.yaml`, changed by console) + rollups | writer | planned (Q) |
 | `problems/{id}` | open/resolved problems | rules | planned (F) |
@@ -288,7 +312,7 @@ Event types are listed in [`mission-control/schema/types.md`](../mission-control
 | MemoryStore | product knowledge, holdout scope | gitfiles, firestore (planned) |
 | Secrets | named secrets | Secret Manager (planned) |
 | Notifier | alerts | slack (planned) |
-| AgentRuntime | deploy/scale/list/drain agents | gke, gce, docker (planned) |
+| AgentRuntime | install hosts; deploy, control, logs, restore | fake, docker-local, docker-ssh, gce-vm (planned); gke (parked) |
 | BlobStore | large bodies, holdout backups | gcs, memory (planned) |
 | GitActivity | repo changes as events | github poll (planned), webhook (later) |
 | SkillRegistry | versioned skills | git plugin marketplace (planned) |
@@ -296,8 +320,9 @@ Event types are listed in [`mission-control/schema/types.md`](../mission-control
 ## 12. Code layout
 
 ```
-bin/                 login.sh, factory.py, gcp/ (VM, logins, rebuild, env.sh), gke/ (cluster, deploy)
+bin/                 login.sh, factory.py, gcp/ (VM, logins, rebuild, env.sh), gke/ (parked)
 agents/              compliance/ (agent, rules, reviewer, tests), image/Dockerfile
+deploy/              (planned) components/*.yaml, hosts.yaml, deployments.yaml
 products/            one YAML per product: repo, base_branch, compliance
 prompts/             PromptRegistry file adapter: <name>/NNNN.md + labels.yaml
 mission-control/
@@ -324,15 +349,15 @@ docs/                this documentation
 | 2026-11-17 | Prompt manager: git adapter first, MLflow next; skills as a Claude Code plugin marketplace |
 | 2026-11-17 | Compliance agent is a plain Python process, not an Archon workflow |
 | 2026-11-17 | Console is served from the main node (not Cloud Run with Google sign-in) |
+| 2026-11-21 | No Vertex AI for now; agents use Claude as the project does. Hosting is Docker on factory-1 and sandbox VMs; GKE parked. Install, deploy, process control and agent chains are managed from the console |
 
 ## 14. Open questions
 
 | Question | Owner | Blocks |
 |---|---|---|
-| Enable Anthropic models in Vertex AI Model Garden | owner | compliance agent deploy (OB1) |
+| Claude for unattended agents: project login or an API key per agent | owner | VM-hosted agents (R5) |
 | Factory GitHub identity (two GitHub Apps recommended) | owner | PR comments/checks (OC8), builder identity |
 | Remove factory-1's public IP | owner | OB7 |
-| Vertex region: `me-west1`, `eu` or `global` (data location) | owner | OB1 |
 | Holdouts outside the repo; what to do with `d58edec` on the converter's `main` | owner | N2, first real lap |
-| Can the pinned Archon run workflows kept outside the product repo | check | builder pools on GKE |
+| Can the pinned Archon run workflows kept outside the product repo | check | the engine as a deployable component on other hosts |
 | Console identity per operator (shared tunnel today) | design | audit by person (UI-2) |
