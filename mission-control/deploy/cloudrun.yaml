@@ -7,3 +7,5 @@ ports:
   bus:
     adapter: pubsub
     project: ${GCP_PROJECT}
+  notifier:
+    adapter: log          # alerts as Cloud Logging entries (labels.factory_alert = "1")

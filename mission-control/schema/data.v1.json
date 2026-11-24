@@ -1101,6 +1101,57 @@
         }
       }
     },
+    "problem.opened": {
+      "type": "object",
+      "required": [
+        "problem_id",
+        "kind",
+        "severity",
+        "title"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "problem_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 200
+        },
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z_]+\\.[a-z_]+$"
+        },
+        "severity": {
+          "enum": [
+            "critical",
+            "warning",
+            "info"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "detail": {
+          "type": "string",
+          "maxLength": 600
+        },
+        "link": {
+          "type": "string"
+        },
+        "since": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "product": {
+          "type": "string"
+        },
+        "alerted": {
+          "type": "boolean"
+        }
+      }
+    },
     "problem.acknowledged": {
       "type": "object",
       "required": [

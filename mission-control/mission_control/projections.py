@@ -29,7 +29,7 @@ from mission_control.ports import Event, StateStore
 RUNS, NODES, ENGINES = "runs", "nodes", "engines"
 AGENTS, COMPLIANCE = "agents", "compliance"
 COMMANDS, DEPLOYMENTS = "commands", "deployments"
-PRODUCTS, PROBLEM_STATES = "products", "problem_states"
+PRODUCTS, PROBLEM_STATES, PROBLEMS = "products", "problem_states", "problems"
 HOSTS = "hosts"
 PULLREQUESTS, WORKITEMS, REPOS = "pullrequests", "workitems", "repos"
 CHECK_HEADS = 5
@@ -372,6 +372,26 @@ def _apply_repo(doc: dict | None, ev: Event, kind: str) -> dict:
     return d
 
 
+def _apply_problem(doc: dict | None, ev: Event, kind: str) -> dict:
+    """problems/{id}: what the scheduled rules (F7) last said about a problem: open with
+    its title, severity and occurrence, or resolved. Older events never undo newer ones."""
+    d, data, t = dict(doc or {}), ev.get("data", {}), ev["time"]
+    if (t, ev["id"]) < (d.get("changed_at", ""), d.get("event_id", "")):
+        return d
+    d.update(problem_id=data["problem_id"], changed_at=t, event_id=ev["id"])
+    if kind == "problem.opened":
+        if d.get("state") != "open":
+            d["opened_at"] = t
+            d["occurrences"] = int(d.get("occurrences", 0)) + 1
+            d.pop("resolved_at", None)
+        d["state"] = "open"
+        d.update({k: data[k] for k in ("kind", "severity", "title", "detail", "link", "since", "key", "product",
+                                        "alerted") if k in data})
+    else:
+        d.update(state="resolved", resolved_at=t)
+    return d
+
+
 def _apply_problem_state(doc: dict | None, ev: Event, kind: str) -> dict:
     """problem_states/{id}: the latest acknowledgement and resolution, each tied to the
     occurrence (`since`) it was made for."""
@@ -454,6 +474,12 @@ def project(ev: Event, store: StateStore) -> list[str]:
             return []
         store.update(PRODUCTS, name, lambda doc: _apply_product(doc, ev, kind))
         return [f"{PRODUCTS}/{name}"]
+    if kind == "problem.opened" or (kind == "problem.resolved" and (ev.get("data") or {}).get("by_rule")):
+        pid = (ev.get("data") or {}).get("problem_id")
+        if not pid:
+            return []
+        store.update(PROBLEMS, pid, lambda doc: _apply_problem(doc, ev, kind))
+        return [f"{PROBLEMS}/{pid}"]
     if kind in ("problem.acknowledged", "problem.resolved"):
         pid = (ev.get("data") or {}).get("problem_id")
         if not pid:

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build, push and deploy the writer, then wire factory-events → writer with a dead-letter
-# topic. Idempotent. Run from the factory repo root after infra/setup.sh.
+# topic, and the scheduled problem rules (Cloud Scheduler → POST /rules, plan F7). Idempotent. Run from the factory repo root after infra/setup.sh.
 #   PROJECT=... REGION=... mission-control/infra/deploy-writer.sh
 set -euo pipefail
 source "$(dirname "$0")/../../bin/gcp/env.sh"   # gcloud/docker config inside .factory-secrets
@@ -52,5 +52,23 @@ else
 fi
 gcloud pubsub subscriptions add-iam-policy-binding factory-events-writer $G \
   --member "serviceAccount:$PUBSUB_AGENT" --role roles/pubsub.subscriber >/dev/null
+
+say "scheduled problem rules (every 2 min)"
+# The rules publish problem.opened/resolved on factory-events and alert through the
+# notifier (Cloud Logging lines labelled factory_alert=1). The scheduler signs its
+# calls as the writer's service account, the only invoker of the service.
+gcloud services enable cloudscheduler.googleapis.com $G >/dev/null
+gcloud pubsub topics add-iam-policy-binding factory-events $G \
+  --member "serviceAccount:$WRITER_SA" --role roles/pubsub.publisher >/dev/null
+SCHED_REGION=${SCHED_REGION:-$REGION}
+JOB_ARGS=(--location "$SCHED_REGION" --schedule "*/2 * * * *" --time-zone Etc/UTC
+  --uri "$URL/rules" --http-method POST --oidc-service-account-email "$WRITER_SA" --oidc-token-audience "$URL"
+  --attempt-deadline 60s --max-retry-attempts 0)
+if gcloud scheduler jobs describe factory-problem-rules $G --location "$SCHED_REGION" >/dev/null 2>&1; then
+  gcloud scheduler jobs update http factory-problem-rules $G "${JOB_ARGS[@]}" >/dev/null
+else
+  gcloud scheduler jobs create http factory-problem-rules $G "${JOB_ARGS[@]}" >/dev/null
+fi
+echo "factory-problem-rules in $SCHED_REGION → $URL/rules"
 
 say "done"

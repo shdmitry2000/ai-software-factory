@@ -97,8 +97,8 @@ new version (`…v2`), never an edit.
 
 | Type | Subject | Meaning | Source |
 |---|---|---|---|
-| `dev.factory.problem.opened` | `problem/{id}` | a rule opened a problem | writer / scheduler rules |
-| `dev.factory.problem.resolved` | `problem/{id}` | it cleared | same |
+| `dev.factory.problem.opened` | `problem/{id}` | a rule sees a problem (new, or its occurrence or severity changed): kind, severity, title, detail, link, since, key, product, alerted | scheduled rules in the writer (`alerts.py`, F7) |
+| `dev.factory.problem.resolved` | `problem/{id}` | it cleared (`by_rule: true`), or an operator resolved this occurrence (who, why, command id) | scheduled rules / command handler |
 | `dev.factory.problem.acknowledged` | `problem/{id}` | an operator saw it and took it (who, why); applies to this occurrence | command handler |
 | `dev.factory.command.issued` | `engine/{engine}/command/{id}` | an operator asked for an action (deployment.apply/start/stop/restart/remove/scale; later halt, approve, settings); who and why | console / CLI → `factory-commands`; the handler copies it to `factory-events` |
 | `dev.factory.command.acknowledged` | `engine/{engine}/command/{id}` | the handler accepted or refused it (with the reason) | command handler (factory-1) |

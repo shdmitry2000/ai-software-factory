@@ -151,7 +151,8 @@ def create_app(store: StateStore, *, resolve: Callable[[tuple | None], Operator 
                 "q": q, "options": views.run_filters(store)}
 
     def data_problems(q: dict) -> dict:
-        return {"problems": views.problems(store, views.now())}
+        at = views.now()
+        return {"problems": views.problems(store, at), "rules": views.rule_log(store, at)}
 
     def data_audit(q: dict) -> dict:
         at = views.now()

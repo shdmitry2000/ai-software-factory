@@ -1,8 +1,9 @@
 """Read models for the console screens (UI-1): plain functions over the StateStore
 and the products files, so they are testable without a web server.
 
-Problems are derived here from the projections, with the rules below, until the
-scheduled problem rules (plan F7) write a `problems` collection.
+Problems are derived here from the projections, with the rules below. The same rules
+run on a schedule in the writer (`mission_control/alerts.py`, plan F7), which records
+each opening and clearing in the `problems` collection and sends alerts.
 """
 from __future__ import annotations
 
@@ -22,6 +23,8 @@ FINDING_ORDER = {"high": 0, "medium": 1, "low": 2, "info": 3}
 BASE_GRACE_S = 180             # a base-branch change reaches the engine's heartbeat within this
 GIT_STALE_S = 900              # no successful poll of a repository for this long: stale
 CHECK_FAILED = {"failure", "timed_out", "cancelled", "action_required", "stale"}
+RULES_SILENT_S = 900           # the scheduled problem check has not run for this long
+RULES_DOC = ("problem_rules", "latest")
 
 
 def now() -> datetime:
@@ -293,7 +296,8 @@ def _gone(h: dict) -> bool:
     return h.get("state") == "removed" or (h.get("host") != "local" and h.get("kind") == "vm" and not h.get("desired"))
 
 
-def problems(store: StateStore, at: datetime, spec_hosts: set[str] | None = None) -> list[Problem]:
+def rule_problems(store: StateStore, at: datetime, spec_hosts: set[str] | None = None) -> list[Problem]:
+    """Every problem the rules see now, before operator acknowledgements and resolutions."""
     out: list[Problem] = []
     for e in engines(store, at):
         if not e["alive"]:
@@ -396,6 +400,19 @@ def problems(store: StateStore, at: datetime, spec_hosts: set[str] | None = None
             out.append(Problem("warning", "git.stale", f"Git data for {name} is stale",
                                f"last read {ago(repo.get('git_seen_at'), at)}; is mission-control-poller running?",
                                "/projects", repo.get("git_seen_at", ""), name, product=name))
+    rules = store.get(*RULES_DOC)
+    if rules and rules.get("at") and (age_s(rules["at"], at) or 0) >= RULES_SILENT_S:
+        out.append(Problem("warning", "rules.silent", "The scheduled problem check has stopped",
+                           f"last ran {ago(rules['at'], at)}; problems still show here, but no alerts go out "
+                           "(Cloud Scheduler job factory-problem-rules → writer /rules)",
+                           "/problems", rules["at"], "scheduler"))
+    return out
+
+
+def problems(store: StateStore, at: datetime, spec_hosts: set[str] | None = None) -> list[Problem]:
+    """What the Problems screen shows: the rules' problems with the operator's
+    acknowledgements applied and this occurrence's resolutions hidden."""
+    out = rule_problems(store, at, spec_hosts)
     states = {d.get("problem_id"): d for d in store.query("problem_states")}
     shown: list[Problem] = []
     for p in out:
@@ -407,6 +424,19 @@ def problems(store: StateStore, at: datetime, spec_hosts: set[str] | None = None
             p = replace(p, acked_by=ack.get("who", ""), ack_reason=ack.get("reason", ""))
         shown.append(p)
     return sorted(shown, key=lambda p: (bool(p.acked_by), SEVERITY_ORDER[p.severity], p.since or "~"))
+
+
+def rule_log(store: StateStore, at: datetime, limit: int = 20) -> dict:
+    """The scheduled rules (F7): when they last ran, and the problems they opened or
+    cleared most recently (the `problems` collection)."""
+    last = store.get(*RULES_DOC) or {}
+    rows = sorted(store.query("problems"), key=lambda d: d.get("changed_at", ""), reverse=True)[:limit]
+    for d in rows:
+        d["ago"] = ago(d.get("changed_at"), at)
+        d["opened_ago"] = ago(d.get("opened_at"), at)
+    return {"ran": bool(last.get("at")), "ago": ago(last.get("at"), at), "last": last,
+            "late": bool(last.get("at")) and (age_s(last.get("at"), at) or 0) >= RULES_SILENT_S,
+            "recent": rows, "alerted": {d["problem_id"] for d in rows if d.get("state") == "open" and d.get("alerted")}}
 
 
 # ---------------------------------------------------------------------- audit

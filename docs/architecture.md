@@ -288,7 +288,8 @@ and is linked per run. Full plan: [console-ui-plan.md](console-ui-plan.md).
 | `deployments/{id}` | latest state: host, digest, instances, last action and command; desired state; last 5 digests | writer | running (R4, R9) |
 | `compliance/{product}__{pr}` | latest advisory report of a PR | writer | built |
 | `products/{product}` | settings: the file's seed + console overrides (newest per field), effective values, change history | writer | running (UI-2) |
-| `problems/{id}` | open/resolved problems written by scheduled rules (for alerts) | rules | planned (F7); the console derives problems on read today |
+| `problems/{id}` | open/resolved problems written by the scheduled rules: severity, title, occurrence (`since`), opened/resolved times, occurrences, alerted | writer (`problem.opened` / rule `problem.resolved`) | running (F7); the console still derives the live list on read, this is the record and the alert state |
+| `problem_rules/latest` | when the scheduled rules last ran and what they changed | writer `/rules` | running (F7) |
 | `problem_states/{id}` | operator acknowledgement / resolution per problem occurrence | writer | running (UI-2) |
 | `work_items/{id}` | issue → laps → PR → merge path | writer | planned (G) |
 | `runs/{run}/messages/{seq}` | agent-to-agent messages (holdouts: metadata) | writer | planned (S) |
