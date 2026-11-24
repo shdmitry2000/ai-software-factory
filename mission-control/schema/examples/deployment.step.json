@@ -1,0 +1,19 @@
+{
+  "specversion": "1.0",
+  "id": "deployment-step:c0ffee12-3456:001",
+  "source": "factory://factory-1/command-handler",
+  "type": "dev.factory.deployment.step",
+  "subject": "deployment/compliance@local",
+  "time": "2026-11-21T17:00:00Z",
+  "datacontenttype": "application/json",
+  "factoryengine": "factory-1",
+  "data": {
+    "command_id": "c0ffee12-3456",
+    "deployment": "compliance@local",
+    "host": "local",
+    "seq": 1,
+    "step": "restart",
+    "ok": true,
+    "detail": "factory-compliance-1"
+  }
+}

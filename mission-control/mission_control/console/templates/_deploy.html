@@ -1,0 +1,63 @@
+{% from "_macros.html" import status, act %}
+{% if spec_error %}<section class="card bad">Deploy files: {{ spec_error }}</section>{% endif %}
+<section class="card">
+  <div class="cardhead"><h2>Deployments</h2>
+    <span class="muted">builds use the main node's checkout: <span class="mono">{{ source or 'unknown' }}</span></span>
+    {% if can_act %}<button hx-get="/panels/deploy" hx-target="#panel">Deploy…</button>{% endif %}
+  </div>
+  <div class="scroll"><table>
+    <thead><tr><th>Deployment</th><th>State</th><th>Replicas</th><th>Image</th><th>Last action</th><th>Control</th></tr></thead>
+    <tbody>
+    {% for d in deployments %}
+    <tr>
+      <td><b class="mono">{{ d.id }}</b>
+        {% if d.desired.products %}<div class="muted">{{ d.desired.products|join(', ') }}</div>{% elif d.git and d.git.products %}<div class="muted">{{ d.git.products|join(', ') }}</div>{% endif %}
+        {% for x in d.differs %}<div class="chip warn" title="console state differs from deploy/deployments.yaml">{{ x }}</div>{% endfor %}</td>
+      <td>{{ status(d.state) }}<div class="mono muted">{% for i in d.instances or [] %}{{ i.name }} {{ i.state }}<br>{% endfor %}</div></td>
+      <td>{{ d.replicas }}</td>
+      <td class="mono">{{ (d.digest or '')[7:19] or '–' }}
+        {% if d.rollback %}<div class="muted">before: {% for r in d.rollback %}{{ r.digest[7:19] }}{% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}</td>
+      <td>{{ d.last_action or '' }} {% if d.last_ok is false %}{{ status('failed') }}{% endif %}<div class="muted nowrap">{{ d.ago }}</div>
+        {% if d.error %}<div class="bad">{{ d.error }}</div>{% endif %}</td>
+      <td>
+      {% if can_act %}
+        {% if d.state == 'not deployed' %}
+          {{ act('deployment.apply', d.id, 'Deploy (build)', can_act, extra={'build': '1'}) }}
+        {% else %}
+          {% if d.state == 'running' %}{{ act('deployment.restart', d.id, 'Restart', can_act) }}{{ act('deployment.stop', d.id, 'Stop', can_act, confirm='Stop ' ~ d.id ~ '?', danger=true) }}
+          {% else %}{{ act('deployment.start', d.id, 'Start', can_act) }}{% endif %}
+          <form class="act" hx-post="/act" hx-target="#activity" hx-swap="afterbegin" hx-on::after-request="if(event.detail.successful) this.reset()">
+            <input type="hidden" name="action" value="deployment.scale"><input type="hidden" name="target" value="{{ d.id }}">
+            <input name="arg_replicas" type="number" min="0" max="20" value="{{ d.replicas }}" style="width:4.5em" aria-label="replicas">
+            <input name="reason" required minlength="3" placeholder="why?" aria-label="reason for scale"><button>Scale</button>
+          </form>
+          {{ act('deployment.apply', d.id, 'Upgrade (build ' ~ (source.split(' ')[0] if source else 'HEAD') ~ ')', can_act, extra={'build': '1'}) }}
+          {% for r in d.rollback[:3] %}{{ act('deployment.apply', d.id, 'Roll back to ' ~ r.digest[7:19], can_act, extra={'digest': r.digest}, confirm='Run ' ~ d.id ~ ' on image ' ~ r.digest[7:19] ~ ' again?') }}{% endfor %}
+          {% if d.differs and d.git %}{{ act('deployment.apply', d.id, 'Reset to git', can_act, extra={'reset': '1'}) }}{% endif %}
+          <button hx-get="/panels/logs/{{ d.id }}" hx-target="#panel">Logs</button>
+          {{ act('deployment.remove', d.id, 'Remove', can_act, confirm='Remove ' ~ d.id ~ '? Its containers are deleted.', danger=true) }}
+        {% endif %}
+      {% endif %}
+      </td>
+    </tr>
+    {% else %}<tr><td colspan="6" class="muted">Nothing deployed and nothing in deploy/deployments.yaml.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</section>
+<section class="card">
+  <h2>Components</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Component</th><th>LLM</th><th>Starts on</th><th>Emits</th><th>Deployed</th><th></th></tr></thead>
+    <tbody>
+    {% for c in components %}
+    <tr><td><b class="mono">{{ c.name }}</b><div class="muted">{{ c.description }}</div><div class="muted mono">{{ c.image }}{% if c.build %} · built here{% endif %}{% if c.per_product %} · one product per deployment{% endif %}</div></td>
+      <td>{{ c.llm }}</td>
+      <td class="mono">{% for t in c.consumes %}{{ t[12:] }}<br>{% else %}<span class="muted">timer</span>{% endfor %}</td>
+      <td class="mono">{% for t in c.emits %}{{ t[12:] }}<br>{% endfor %}</td>
+      <td class="mono">{{ c.deployed|join(', ') or '–' }}</td>
+      <td>{% if can_act %}<button hx-get="/panels/deploy?component={{ c.name }}" hx-target="#panel">Deploy…</button>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="muted">A new component is a file in <span class="mono">deploy/components/</span>, added by PR.</p>
+</section>

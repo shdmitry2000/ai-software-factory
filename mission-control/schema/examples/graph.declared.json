@@ -1,0 +1,22 @@
+{
+  "specversion": "1.0",
+  "id": "archon:graph-8f3c21-2",
+  "source": "factory://factory-1/archon",
+  "type": "dev.factory.graph.declared",
+  "subject": "run/8f3c21",
+  "time": "2026-11-15T12:04:02Z",
+  "datacontenttype": "application/json",
+  "factoryengine": "factory-1",
+  "factoryrun": "8f3c21",
+  "data": {
+    "workflow": "archon-loop",
+    "nodes": [{"id": "pick"}, {"id": "build"}, {"id": "validate"}, {"id": "app-check"},
+              {"id": "holdout-verify"}, {"id": "review"}, {"id": "merge-gate", "kind": "script"}],
+    "edges": [{"from": "pick", "to": "build"},
+              {"from": "build", "to": "validate"}, {"from": "build", "to": "app-check"},
+              {"from": "build", "to": "holdout-verify"},
+              {"from": "validate", "to": "review"}, {"from": "app-check", "to": "review"},
+              {"from": "holdout-verify", "to": "review"},
+              {"from": "review", "to": "merge-gate"}]
+  }
+}

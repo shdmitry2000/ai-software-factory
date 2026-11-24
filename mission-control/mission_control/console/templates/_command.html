@@ -1,0 +1,11 @@
+{% from "_macros.html" import status %}
+{% if c %}
+{{ status(c.status) }} <b>{{ c.action }}</b> <span class="mono">{{ c.target }}</span>
+<span class="muted mono">{{ cid }}</span>
+{% if c.refusal %}<div class="bad">{{ c.refusal }}</div>{% endif %}
+{% if c.error %}<div class="bad">{{ c.error }}</div>{% endif %}
+{% if c.detail %}<div class="muted">{{ c.detail }}</div>{% endif %}
+{% if steps %}<ol class="steps">{% for st in steps %}<li class="{{ 'ok' if st.ok else 'bad' }}">{{ st.step }} <span class="muted">{{ st.detail }}</span></li>{% endfor %}</ol>{% endif %}
+{% else %}
+Sent <span class="mono">{{ cid }}</span> · waiting for the handler…
+{% endif %}

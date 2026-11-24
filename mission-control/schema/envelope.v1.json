@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://factory.dev/schema/envelope.v1.json",
+  "title": "Factory event (CloudEvents 1.0, structured JSON)",
+  "description": "Every message on factory-events. Required CloudEvents attributes plus the factory extensions. `data` is checked separately against data/<type>.json.",
+  "type": "object",
+  "required": ["specversion", "id", "source", "type", "time", "datacontenttype", "factoryengine", "data"],
+  "properties": {
+    "specversion": {"const": "1.0"},
+    "id": {
+      "type": "string",
+      "description": "Deterministic: {source-kind}:{source id}. Also the store document id.",
+      "pattern": "^[a-z][a-z0-9-]*:.+$",
+      "maxLength": 256
+    },
+    "source": {
+      "type": "string",
+      "format": "uri-reference",
+      "pattern": "^factory://[a-z0-9][a-z0-9-]*/[a-z][a-z0-9-]*$",
+      "description": "factory://{engine or service}/{adapter}"
+    },
+    "type": {
+      "type": "string",
+      "pattern": "^dev\\.factory\\.[a-z_]+\\.[a-z_]+$"
+    },
+    "subject": {"type": "string", "maxLength": 512},
+    "time": {"type": "string", "format": "date-time"},
+    "datacontenttype": {"const": "application/json"},
+    "dataschema": {"type": "string", "format": "uri"},
+    "factoryengine": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+    "factoryproduct": {"type": "string"},
+    "factoryrun": {"type": "string"},
+    "factoryparentrun": {"type": "string"},
+    "factoryworkitem": {"type": "string", "pattern": "^(|tracker:[a-z0-9-]+/.+)$"},
+    "traceparent": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$"
+    },
+    "data": {"type": "object"}
+  },
+  "propertyNames": {
+    "description": "CloudEvents attribute names: lower-case letters and digits only.",
+    "pattern": "^[a-z0-9]{1,20}$"
+  },
+  "additionalProperties": {"type": "string"}
+}

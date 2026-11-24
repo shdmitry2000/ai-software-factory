@@ -1,0 +1,6 @@
+<section class="card panel">
+  <div class="cardhead"><h2>Logs · <span class="mono">{{ dep }}</span></h2><span class="muted">last {{ tail }} lines, then live</span>
+    <span class="spacer"></span><button class="danger" type="button" onclick="this.closest('#panel').innerHTML=''">Close</button></div>
+  <div class="logs mono" hx-ext="sse" sse-connect="/panels/logs/{{ dep }}/stream?tail={{ tail }}" sse-swap="line,end" hx-swap="beforeend" sse-close="end"
+       hx-on::after-settle="this.scrollTop=this.scrollHeight"></div>
+</section>

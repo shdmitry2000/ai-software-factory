@@ -1,0 +1,26 @@
+{% macro status(s) -%}
+<span class="chip {{ 'good' if s in ('succeeded','completed','running','idle','clean','no_rules','merged') else 'bad' if s in ('failed','refused','error','lost','abandoned','findings','stopped','exited') else 'warn' if s in ('capped','paused','busy','partial','draining') else '' }}">{{ s or '–' }}</span>
+{%- endmacro %}
+{% macro filters(path, q, options) -%}
+<form class="filters" method="get" action="/{{ path }}">
+  {% for name, values in options.items() %}
+  <label>{{ name }}
+    <select name="{{ name }}" onchange="this.form.submit()">
+      <option value="">all</option>
+      {% for v in values %}<option value="{{ v }}" {% if q.get(name) == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+    </select>
+  </label>
+  {% endfor %}
+  {% if q.values()|select|list %}<a href="/{{ path }}">clear</a>{% endif %}
+</form>
+{%- endmacro %}
+{% macro act(action, target, label, can_act, confirm='', danger=false, extra={}) -%}
+{% if can_act %}
+<form class="act" hx-post="/act" hx-target="#activity" hx-swap="afterbegin" hx-on::after-request="if(event.detail.successful) this.reset()"{% if confirm %} hx-confirm="{{ confirm }}"{% endif %}>
+  <input type="hidden" name="action" value="{{ action }}"><input type="hidden" name="target" value="{{ target }}">
+  {% for k, v in extra.items() %}<input type="hidden" name="arg_{{ k }}" value="{{ v }}">{% endfor %}
+  <input name="reason" required minlength="3" placeholder="why?" aria-label="reason for {{ label }}">
+  <button class="{{ 'danger' if danger else '' }}">{{ label }}</button>
+</form>
+{% endif %}
+{%- endmacro %}

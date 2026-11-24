@@ -1,0 +1,5 @@
+# Where things can run. `local` is the main node (factory-1) itself. VM hosts
+# (kind: vm) are created and installed from the console in Stage R5.
+hosts:
+  - id: local
+    kind: local

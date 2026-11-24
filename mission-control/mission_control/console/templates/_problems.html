@@ -1,0 +1,30 @@
+{% from "_macros.html" import act %}
+<p class="muted">Derived live from engines, agents, hosts, deployments, runs, git data and compliance reports (rules in <span class="mono">mission_control/console/views.py</span>). Acknowledging keeps a problem listed but takes it off “Needs you” until it happens again; resolving hides this occurrence.</p>
+<p class="muted">Scheduled check (Cloud Scheduler → writer, every 2 min; opens and clears problems, alerts on new warnings and criticals):
+  {% if rules.ran %}<b class="{{ 'bad' if rules.late else 'ok' }}">last ran {{ rules.ago }}</b> · {{ rules.last.open }} open{% else %}<b>not run yet</b>{% endif %}</p>
+<section class="card">
+  {% for p in problems %}
+  <div class="problem {{ p.severity }}{% if p.acked_by %} acked{% endif %}">
+    <span class="chip sev-{{ p.severity }}">{{ p.severity }}</span>
+    <div><a href="{{ p.link or '#' }}"><b>{{ p.title }}</b></a><div class="muted">{{ p.detail }}{% if p.since %} · since {{ p.since[:19]|replace('T', ' ') }} UTC{% endif %}{% if p.id in rules.alerted %} · alert sent{% endif %}</div>
+      {% if p.acked_by %}<div class="muted">acknowledged by {{ p.acked_by }}: {{ p.ack_reason }}</div>{% endif %}
+      <div class="row">{% if not p.acked_by %}{{ act('problem.ack', p.id, 'Acknowledge', can_act, extra={'since': p.since}) }}{% endif %}
+        {{ act('problem.resolve', p.id, 'Resolve', can_act, extra={'since': p.since}) }}</div>
+    </div>
+    <span class="mono muted">{{ p.kind }}</span>
+  </div>
+  {% else %}<p class="ok">No problems.</p>{% endfor %}
+</section>
+{% if rules.recent %}
+<h3>Recently opened and cleared</h3>
+<section class="card"><table>
+  <tr><th>Problem</th><th>Severity</th><th>State</th><th>Opened</th><th>Changed</th><th>Alert</th></tr>
+  {% for d in rules.recent %}
+  <tr><td>{{ d.title or d.problem_id }}<div class="mono muted">{{ d.problem_id }}</div></td>
+    <td><span class="chip sev-{{ d.severity }}">{{ d.severity }}</span></td>
+    <td class="{{ 'bad' if d.state == 'open' else 'ok' }}">{{ d.state }}</td>
+    <td>{{ d.opened_ago }}{% if d.occurrences and d.occurrences > 1 %} <span class="muted">({{ d.occurrences }}×)</span>{% endif %}</td>
+    <td>{{ d.ago }}</td><td>{{ 'sent' if d.alerted else '' }}</td></tr>
+  {% endfor %}
+</table></section>
+{% endif %}

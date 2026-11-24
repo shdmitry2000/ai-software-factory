@@ -1,0 +1,21 @@
+{
+  "specversion": "1.0",
+  "id": "archon:7f3c9a10-2b44-4e1e-9d55-0c1f6a2b8e01",
+  "source": "factory://factory-1/archon",
+  "type": "dev.factory.node.started",
+  "subject": "run/8f3c21/node/app-check",
+  "time": "2026-11-15T12:17:56.120Z",
+  "datacontenttype": "application/json",
+  "factoryengine": "factory-1",
+  "factoryproduct": "file-to-markdown-convertor",
+  "factoryrun": "8f3c21",
+  "factoryworkitem": "tracker:github/shdmitry2000/file-to-markdown-convertor#14",
+  "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+  "data": {
+    "workflow": "archon-loop",
+    "node": "app-check",
+    "attempt": 2,
+    "agent": {"provider": "claude", "model": "claude-sonnet-5-5", "tier": "medium"},
+    "sandbox": "container:lap-8f3c"
+  }
+}

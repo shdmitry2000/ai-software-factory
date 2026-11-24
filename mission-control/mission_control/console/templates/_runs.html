@@ -1,0 +1,19 @@
+{% from "_macros.html" import status, filters %}
+{{ filters('runs', q, options) }}
+<section class="card">
+  <div class="scroll"><table>
+    <thead><tr><th>Run</th><th>Workflow</th><th>Product</th><th>Status</th><th>Started</th><th>Took</th><th>Failure</th></tr></thead>
+    <tbody>
+    {% for r in runs %}
+    <tr><td class="mono"><a href="/runs/{{ r.run }}">{{ r.run[:12] }}</a></td><td>{{ r.workflow or '' }}</td><td>{{ r.product or '' }}</td>
+      <td>{{ status(r.status) }}{% if r.stuck %} {{ status('stuck') }}{% endif %}</td><td class="nowrap">{{ r.ago }}</td><td>{{ r.took }}</td>
+      <td>{% if r.failure_class %}<span class="mono">{{ r.failure_class }}</span> at {{ r.failed_node or '?' }}{% endif %}</td></tr>
+      {% for c in r.chain %}
+      <tr class="retry"><td class="mono">↳ <a href="/runs/{{ c.run }}">{{ c.run[:12] }}</a></td><td class="muted">retry {{ loop.index }}</td><td></td>
+        <td>{{ status(c.status) }}</td><td class="nowrap">{{ c.ago }}</td><td>{{ c.took }}</td>
+        <td>{% if c.failure_class %}<span class="mono">{{ c.failure_class }}</span> at {{ c.failed_node or '?' }}{% endif %}</td></tr>
+      {% endfor %}
+    {% else %}<tr><td colspan="7" class="muted">No runs{% if q.values()|select|list %} match these filters{% endif %}.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</section>

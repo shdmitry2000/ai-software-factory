@@ -1,0 +1,25 @@
+{
+  "specversion": "1.0",
+  "id": "deployment-changed:c0ffee12-3456",
+  "source": "factory://factory-1/command-handler",
+  "type": "dev.factory.deployment.changed",
+  "subject": "deployment/compliance@local",
+  "time": "2026-11-21T17:00:00Z",
+  "datacontenttype": "application/json",
+  "factoryengine": "factory-1",
+  "data": {
+    "command_id": "c0ffee12-3456",
+    "deployment": "compliance@local",
+    "host": "local",
+    "action": "deployment.restart",
+    "ok": true,
+    "instances": [
+      {
+        "name": "factory-compliance-1",
+        "state": "running",
+        "digest": "sha256:958606df3873",
+        "started_at": "2026-11-21T17:00:03Z"
+      }
+    ]
+  }
+}

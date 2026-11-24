@@ -322,6 +322,33 @@ class ConsumerTests(Fixture):
                                         "base_branch": "bad name"}))
         self.assertNotEqual(self.command("schedule", "install").returncode, 0)
 
+    def test_console_base_branch_reaches_every_lap(self):
+        # N1: mission control writes .factory/base_branch; it wins over schedule.json and
+        # applies from the next lap, both for direct runs and scheduled ticks.
+        schedule = self.app / ".factory/schedule.json"
+        schedule.write_text(json.dumps({"workflow": "archon-manager", "inputs": {}, "base_branch": "release/2"}))
+        argv = json.loads(self.command("run", "archon-loop", "--json").stdout)["argv"]
+        self.assertEqual(argv[argv.index("--base") + 1], "release/2")
+        base_file = self.app / ".factory/base_branch"
+        base_file.write_text("develop\n")
+        argv = json.loads(self.command("run", "archon-loop", "--json").stdout)["argv"]
+        self.assertEqual(argv[argv.index("--base") + 1], "develop")
+        self.assertLess(argv.index("--base"), argv.index("archon-loop"))
+        argv = json.loads(self.command("run", "archon-loop", "--branch", "mine", "--json").stdout)["argv"]
+        self.assertNotIn("--base", argv)                       # the caller's choice wins
+        self.assertEqual(self.command("schedule", "install").returncode, 0)
+        self.assertEqual(self.trigger_binding()["launch"]["isolation"]["baseOverride"], "develop")
+        base_file.write_text("main\n")
+        config = self.app / ".factory/trigger.json"
+        consumer.refresh_base(self.app, config, lambda _m: None)
+        self.assertEqual(self.trigger_binding()["launch"]["isolation"], {"kind": "worktree", "baseOverride": "main"})
+        base_file.write_text("../evil\n")
+        self.assertNotEqual(self.command("run", "archon-loop", "--json").returncode, 0)
+        base_file.unlink()
+        schedule.write_text(json.dumps({"workflow": "archon-manager", "inputs": {}}))
+        argv = json.loads(self.command("run", "archon-loop", "--json").stdout)["argv"]
+        self.assertNotIn("--base", argv)                       # nothing configured: Archon's default
+
     def test_single_flight_admits_one_holder_and_frees_on_exit(self):
         lock = self.app / ".factory/fire.lock"
         with consumer.single_flight(lock) as first:

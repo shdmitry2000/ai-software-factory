@@ -1,0 +1,31 @@
+{
+  "specversion": "1.0",
+  "id": "compliance:file-to-markdown-convertor:3:f9b6bff0a1c2:5d41402abc4b",
+  "source": "factory://compliance-7f9c/compliance-agent",
+  "type": "dev.factory.compliance.reported",
+  "subject": "change/codehost:github/shdmitry2000/file-to-markdown-convertor#3",
+  "time": "2026-11-17T12:01:00Z",
+  "datacontenttype": "application/json",
+  "factoryengine": "compliance-7f9c",
+  "factoryproduct": "file-to-markdown-convertor",
+  "data": {
+    "product": "file-to-markdown-convertor",
+    "change": "codehost:github/shdmitry2000/file-to-markdown-convertor#3",
+    "pr": 3,
+    "head": "f9b6bff0a1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6",
+    "base": "main",
+    "title": "Factory mission draft",
+    "mode": "advisory",
+    "status": "no_rules",
+    "rules": {
+      "name": "compliance/rules",
+      "version": "1",
+      "label": "production",
+      "hash": "sha256:5d41402abc4b2a76b9719d911017c5925d41402abc4b2a76b9719d911017c592",
+      "count": 0
+    },
+    "findings": [],
+    "cost_usd": 0.0,
+    "duration_ms": 412
+  }
+}

@@ -9,6 +9,7 @@ __pycache__/
 .factory/schedule.log
 .factory/schedule-task.xml
 .factory/trigger.json
+.factory/base_branch
 .factory/gate.json
 .factory/*.lock
 harness/.results/

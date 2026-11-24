@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.factory-secrets/**)",
+      "Edit(./.factory-secrets/**)",
+      "Bash(cat .factory-secrets/*)",
+      "Bash(cat ./.factory-secrets/*)"
+    ]
+  }
+}

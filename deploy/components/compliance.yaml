@@ -1,0 +1,24 @@
+# Advisory compliance agent: reviews every open PR head against the versioned rules
+# (prompts/compliance/rules). Empty rules: reports no_rules, no model call, $0.
+name: compliance
+description: Advisory PR review against versioned compliance rules
+image: factory/agent                  # built on the host from `build`; run by image id
+build:
+  dockerfile: agents/image/Dockerfile
+  context: .
+command: [--bus, pubsub, --store, firestore, --interval, "600"]
+llm: project                          # the project's Claude login, mounted as a file
+run_as: "10001"
+tmpfs: [/tmp, /home/agent]
+resources: {cpus: "0.5", memory: 512m}
+env:
+  GCP_PROJECT: ${PROJECT}
+  MC_TOPIC: factory-events
+  COMPLIANCE_MODEL: claude-haiku-5-5
+per_product: true                     # one product per deployment (FACTORY_PRODUCT)
+consumes:                             # chain triggers (R6): a filtered subscription per deployment; the 10-min timer stays as a safety net
+  - type: dev.factory.pullrequest.opened
+  - type: dev.factory.pullrequest.updated
+emits:
+  - dev.factory.compliance.reported
+  - dev.factory.agent.heartbeat

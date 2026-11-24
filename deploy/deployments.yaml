@@ -1,0 +1,7 @@
+# What runs where: the desired state. Change it by PR; the console will open those PRs.
+# digest: empty = the image just built on the host (bin/agents/deploy.sh).
+deployments:
+  - component: compliance
+    host: local
+    replicas: 1
+    products: [file-to-markdown-convertor]
